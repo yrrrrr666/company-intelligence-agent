@@ -52,6 +52,18 @@ test('model output rejects unknown, excluded and missing citation IDs', () => {
   assert.deepEqual(validateModelClaims({ claims: [{ text: '有来源的结论', sourceIds: ['demo-1'] }] }, sources)[0].sourceIds, ['demo-1']);
 });
 
+test('source labels remain stable when earlier sources are excluded', () => {
+  const { task, sources } = demoWorkspace();
+  sources[0].review = 'excluded';
+  sources[1].review = 'included';
+  const report = createReport(task, sources);
+  assert.equal(report.sources[0].sourceNumber, 2);
+  const markdown = reportMarkdown(report);
+  assert(markdown.includes('[来源 2](#source-2)'));
+  assert(markdown.includes('<a id="source-2"></a>'));
+  assert(!markdown.includes('#source-1'));
+});
+
 test('source validation rejects corrupt stored state and unsafe links', () => {
   const { sources } = demoWorkspace();
   assert.doesNotThrow(() => validateSources(sources));

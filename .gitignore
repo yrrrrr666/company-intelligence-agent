@@ -9,3 +9,10 @@ outputs/
 .pytest_cache/
 node_modules/
 coverage/
+.impeccable/questions/
+.impeccable/mocks/
+.impeccable/review/
+.impeccable/build/
+.impeccable/live/server.json
+.impeccable/hook.cache.json
+.impeccable/config.local.json

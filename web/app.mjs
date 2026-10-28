@@ -3,6 +3,10 @@ import { STORAGE_KEY, MAX_SOURCES, validateTask, isDate, safeUrl, sourceIssues, 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const icon = name => {
+  const paths = { check: 'm5 12 4 4L19 6', external: 'M14 3h7v7M21 3 10 14M10 5H4v15h15v-6', file: 'M14 3H5v18h14V8zM14 3v5h5M8 12h8M8 16h6' };
+  return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name]}"/></svg>`;
+};
 let state = { task: null, sources: [], report: null };
 let currentStep = 'create';
 let selectedId = null;
@@ -71,7 +75,7 @@ function invalidateReport() {
   if (requestController) requestController.abort();
   requestController = null;
   $('#generate-report').disabled = false;
-  $('#generate-report').textContent = '生成简报 ↗';
+  $('#generate-report').textContent = '生成简报';
   $('#report-error').textContent = '';
 }
 
@@ -87,7 +91,8 @@ function go(step) {
     else button.removeAttribute('aria-current');
   }
   $('#demo-notice').hidden = !state.sources.some(source => source.demo) && !state.task?.demo;
-  for (const scope of $$('.scope-line')) scope.textContent = state.task ? `${state.task.company}　/　${state.task.start} — ${state.task.end}　/　${state.task.topic}` : '';
+  $('#task-context').hidden = !state.task;
+  $('#task-context').innerHTML = state.task ? `<div class="context-field"><span class="context-label">当前研究</span><strong class="context-company">${escape(state.task.company)}</strong></div><div class="context-field"><span class="context-label">研究时间</span><span class="context-value">${escape(state.task.start)} 至 ${escape(state.task.end)}</span></div><div class="context-field"><span class="context-label">关注主题</span><span>${escape(state.task.topic)}</span></div>` : '';
   if (step === 'collect') renderCollection();
   if (step === 'review') renderReview();
   if (step === 'report') renderReport();
@@ -98,7 +103,7 @@ function go(step) {
 function renderCollection() {
   const task = state.task;
   const queries = [`"${task.company}" ${task.topic}`, `"${task.company}" 公告 ${task.start} ${task.end}`, `"${task.company}" ${task.topic} 官方`];
-  $('#queries').innerHTML = queries.map((query, index) => `<div class="query-row"><code>${escape(query)}</code><button class="copy-query" data-copy-query="${index}" aria-label="复制第 ${index + 1} 条检索词">复制 ↗</button></div>`).join('');
+  $('#queries').innerHTML = queries.map((query, index) => `<div class="query-row"><code>${escape(query)}</code><button class="copy-query" data-copy-query="${index}" aria-label="复制第 ${index + 1} 条检索词">复制</button></div>`).join('');
   $$('[data-copy-query]').forEach(button => button.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(queries[Number(button.dataset.copyQuery)]); toast('检索词已复制'); }
     catch { toast('无法复制，请选中检索词手动复制'); }
@@ -106,7 +111,7 @@ function renderCollection() {
   $('#collect-count').innerHTML = `${state.sources.length} <small>条资料</small>`;
   $('#collect-summary').textContent = `${state.sources.filter(source => source.access === 'available' && source.text.trim()).length} 条有保存文本，${state.sources.filter(source => source.access !== 'available').length} 条无可用正文。`;
   $('#source-count').textContent = `共 ${state.sources.length} 条 / 上限 ${MAX_SOURCES} 条`;
-  $('#collection-list').innerHTML = state.sources.length ? state.sources.map(source => `<div class="collection-row"><div><strong>${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')} · ${escape(source.date || '发布时间未知')} · ${source.access === 'available' ? '已保存文本' : '无可用正文'}${source.demo ? ' · 虚构演示' : ''}</p></div><button class="link-button" data-open-source="${escape(source.id)}">查看资料 →</button></div>`).join('') : '<div class="empty-state"><span class="empty-symbol">＋</span><h2>还没有研究资料</h2><p>从一条可信来源开始。录入标题、链接与原文片段后，进入人工审核。</p><button class="button secondary" data-action="add-source">录入第一条资料 →</button></div>';
+  $('#collection-list').innerHTML = state.sources.length ? state.sources.map(source => `<div class="collection-row"><div><strong>${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')}，${escape(source.date || '发布时间未知')}，${source.access === 'available' ? '已保存文本' : '无可用正文'}${source.demo ? '（虚构演示）' : ''}</p></div><button class="link-button" data-open-source="${escape(source.id)}">查看资料</button></div>`).join('') : '<div class="empty-state"><svg class="empty-icon" aria-hidden="true"><use href="#i-file"/></svg><h2>还没有研究资料</h2><p>录入标题、链接与原文片段后，进入人工审核。</p><button class="button secondary" data-action="add-source">录入第一条资料</button></div>';
   $$('[data-open-source]').forEach(button => button.addEventListener('click', () => { selectedId = button.dataset.openSource; filter = 'all'; go('review'); }));
 }
 
@@ -121,7 +126,7 @@ function renderReview() {
   $('#review-stats').innerHTML = [
     ['收集资料', state.sources.length, ''], ['待审核', state.sources.filter(source => source.review === 'pending').length, ''],
     ['已纳入', included.length, 'green'], ['待核实', state.sources.filter(needsCheck).length, 'orange']
-  ].map(([label, count, color]) => `<div class="stat ${color}"><span>${label}</span><strong>${count.toString().padStart(2, '0')}</strong></div>`).join('');
+  ].map(([label, count, color]) => `<div class="stat ${color}"><span>${label}</span><strong>${count}</strong></div>`).join('');
   for (const button of $$('[data-filter]')) {
     button.classList.toggle('selected', filter === button.dataset.filter);
     button.setAttribute('aria-pressed', String(filter === button.dataset.filter));
@@ -130,9 +135,16 @@ function renderReview() {
   if (!visible.some(source => source.id === selectedId)) selectedId = visible[0]?.id || null;
   $('#source-list').innerHTML = visible.length ? visible.map(source => {
     const issues = sourceIssues(source, state.task, state.sources);
-    return `<button class="source-item ${source.id === selectedId ? 'selected' : ''}" data-select-source="${escape(source.id)}" aria-pressed="${source.id === selectedId}"><span class="source-order">SOURCE / ${String(state.sources.indexOf(source) + 1).padStart(2, '0')}</span><h3>${escape(source.title)}</h3><p>${escape(source.publisher || '来源未知')} · ${escape(source.date || '日期未知')}</p><div class="tags"><span class="tag ${source.review === 'included' ? 'green' : ''}">${reviewLabel(source)}</span>${issues.filter(issue => issue !== '人工标记待核实' && issue !== '虚构演示资料').map(issue => `<span class="tag ${issue === '没有可用正文' ? 'red' : 'orange'}">${escape(issue)}</span>`).join('')}${source.flagged ? '<span class="tag orange">待核实</span>' : ''}${source.demo ? '<span class="tag">演示</span>' : ''}</div></button>`;
-  }).join('') : '<div class="card empty-state"><span class="empty-symbol">✓</span><h2>这里暂无资料</h2><p>切换筛选查看其他资料，或录入新来源。</p></div>';
-  $$('[data-select-source]').forEach(button => button.addEventListener('click', () => { selectedId = button.dataset.selectSource; renderReview(); $(`[data-select-source="${selectedId}"]`)?.focus({ preventScroll: true }); }));
+    return `<button class="source-item ${source.id === selectedId ? 'selected' : ''}" data-select-source="${escape(source.id)}" aria-pressed="${source.id === selectedId}"><span class="source-order">资料 ${state.sources.indexOf(source) + 1}</span><h3>${escape(source.title)}</h3><p>${escape(source.publisher || '来源未知')}，${escape(source.date || '日期未知')}</p><div class="tags"><span class="tag ${source.review === 'included' ? 'green' : ''}">${reviewLabel(source)}</span>${issues.filter(issue => issue !== '人工标记待核实' && issue !== '虚构演示资料').map(issue => `<span class="tag ${issue === '没有可用正文' ? 'red' : 'orange'}">${escape(issue)}</span>`).join('')}${source.flagged ? '<span class="tag orange">待核实</span>' : ''}${source.demo ? '<span class="tag">演示</span>' : ''}</div></button>`;
+  }).join('') : '<div class="empty-state"><h2>此筛选下暂无资料</h2><p>切换筛选查看其他资料，或录入新来源。</p></div>';
+  $$('[data-select-source]').forEach(button => button.addEventListener('click', () => {
+    selectedId = button.dataset.selectSource;
+    renderReview();
+    if (matchMedia('(max-width: 700px)').matches) {
+      $('#source-detail').focus({ preventScroll: true });
+      $('#source-detail').scrollIntoView({ block: 'start', behavior: 'instant' });
+    } else $(`[data-select-source="${selectedId}"]`)?.focus({ preventScroll: true });
+  }));
   renderDetail();
   $('#selection-hint').textContent = included.length ? `已纳入 ${included.length} 条资料。简报仅使用纳入且有正文的来源。` : '尚未纳入资料。请先查看原文，再选择纳入。';
   $('#to-report').disabled = !included.length;
@@ -141,14 +153,25 @@ function renderReview() {
 function renderDetail() {
   const source = state.sources.find(source => source.id === selectedId);
   if (!source) {
-    $('#source-detail').innerHTML = '<div class="empty-state"><span class="empty-symbol">⌕</span><h2>选择一条资料，开始核查</h2><p>检查公司、时间、主题和正文是否匹配。</p></div>';
+    $('#source-detail').innerHTML = '<div class="empty-state"><svg class="empty-icon" aria-hidden="true"><use href="#i-file"/></svg><h2>选择一条资料，开始核查</h2><p>检查公司、时间、主题和正文是否匹配。</p></div>';
     return;
   }
   const issues = sourceIssues(source, state.task, state.sources);
-  $('#source-detail').innerHTML = `<div class="detail-top"><span>保存的来源文本</span><span>${escape(reviewLabel(source))}</span></div><h2>${escape(source.title)}</h2><dl class="detail-facts"><div><dt>来源名称</dt><dd>${escape(source.publisher || '未知')}</dd></div><div><dt>发布时间</dt><dd>${escape(source.date || '未知')}</dd></div><div><dt>录入时间</dt><dd>${escape(new Date(source.collectedAt).toLocaleString('zh-CN', { hour12: false }))}</dd></div><div><dt>资料状态</dt><dd>${source.access === 'available' ? '已录入文本 · 未联网读取' : '无可用正文（失败演示）'}</dd></div></dl><div class="source-link">${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开来源 ↗</a><p class="muted small">${escape(source.url)}</p>` : '无外部链接 · 虚构演示资料'}</div>${issues.length ? `<div class="issue-list">核查提示：${issues.map(escape).join('；')}</div>` : ''}<div class="saved-text-title">保存文本 / SOURCE TEXT</div><div class="saved-text">${escape(source.text || source.note || '没有可用正文，无法纳入报告。')}</div><div class="detail-actions"><button class="button include" id="include-source" ${!source.text.trim() || source.access !== 'available' ? 'disabled' : ''}>${source.review === 'included' ? '✓ 已纳入' : '✓ 纳入简报'}</button><button class="button secondary" id="exclude-source">${source.review === 'excluded' ? '已排除' : '排除此资料'}</button></div><div class="detail-foot"><label class="flag-label"><input id="flag-source" type="checkbox" ${source.flagged ? 'checked' : ''}> 标记待核实</label>${source.review !== 'pending' ? '<button id="reset-review" class="link-button">撤销审核</button>' : ''}</div>`;
+  $('#source-detail').innerHTML = `<button id="back-to-sources" class="link-button detail-back">返回资料列表</button><div class="detail-top"><span>资料 ${state.sources.indexOf(source) + 1}</span><span>${escape(reviewLabel(source))}</span></div>
+    <h2>${escape(source.title)}</h2>
+    <dl class="detail-facts"><div><dt>来源名称</dt><dd>${escape(source.publisher || '未知')}</dd></div><div><dt>发布时间</dt><dd>${escape(source.date || '未知')}</dd></div><div><dt>录入时间</dt><dd>${escape(new Date(source.collectedAt).toLocaleString('zh-CN', { hour12: false }))}</dd></div><div><dt>资料状态</dt><dd>${source.access === 'available' ? '已录入文本，未联网读取' : '无可用正文（失败演示）'}</dd></div></dl>
+    <div class="source-link">${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开来源 ${icon('external')}</a><p class="muted small">${escape(source.url)}</p>` : '无外部链接（虚构演示资料）'}</div>
+    ${issues.length ? `<div class="issue-list">核查提示：${issues.map(escape).join('；')}</div>` : ''}
+    <div class="saved-text-title">保存文本</div><div class="saved-text">${escape(source.text || source.note || '没有可用正文，无法纳入报告。')}</div>
+    <div class="detail-actions"><button class="button include" id="include-source" ${!source.text.trim() || source.access !== 'available' ? 'disabled' : ''}>${icon('check')}${source.review === 'included' ? '已纳入简报' : '纳入简报'}</button><button class="button secondary" id="exclude-source">${source.review === 'excluded' ? '已排除' : '排除此资料'}</button></div>
+    <div class="detail-foot"><label class="flag-label"><input id="flag-source" type="checkbox" ${source.flagged ? 'checked' : ''}> 标记待核实</label>${source.review !== 'pending' ? '<button id="reset-review" class="link-button">撤销审核</button>' : ''}</div>`;
   $('#include-source').addEventListener('click', () => reviewSource(source.id, 'included'));
   $('#exclude-source').addEventListener('click', () => reviewSource(source.id, 'excluded'));
   $('#reset-review')?.addEventListener('click', () => reviewSource(source.id, 'pending'));
+  $('#back-to-sources').addEventListener('click', () => {
+    $(`[data-select-source="${selectedId}"]`)?.focus({ preventScroll: true });
+    $('.source-index').scrollIntoView({ block: 'start', behavior: 'instant' });
+  });
   $('#flag-source').addEventListener('change', event => {
     source.flagged = event.target.checked;
     invalidateReport(); persist(); renderReview();
@@ -173,14 +196,14 @@ function renderReport() {
   $('#generate-report').disabled = !!requestController || !eligibleSources(state.sources).length;
   $('#report-hint').textContent = eligibleSources(state.sources).length ? `当前纳入 ${eligibleSources(state.sources).length} 条有正文的资料。规则摘录不调用模型。` : '没有已纳入的可用正文，请返回审核并选择资料。';
   if (!report) {
-    $('#report-body').innerHTML = '<div class="empty-state"><span class="empty-symbol">≡</span><h2>你的简报将在这里生成</h2><p>先纳入有正文的资料，再选择整理方式。<br>审核选择变更后，需要重新生成简报。</p></div>';
+    $('#report-body').innerHTML = '<div class="empty-state"><svg class="empty-icon" aria-hidden="true"><use href="#i-file"/></svg><h2>尚未生成简报</h2><p>先纳入有正文的资料，再选择整理方式。<br>审核选择变更后，需要重新生成简报。</p></div>';
     return;
   }
   const citation = id => {
-    const number = report.sources.findIndex(source => source.id === id) + 1;
-    return `<a class="citation" href="#report-source-${number}" aria-label="查看来源 ${number}">来源 ${number} ↗</a>`;
+    const number = report.sources.find(source => source.id === id)?.sourceNumber;
+    return `<a class="citation" href="#report-source-${number}" aria-label="查看来源 ${number}">[资料 ${number}]</a>`;
   };
-  $('#report-body').innerHTML = `<div class="report-document"><div class="report-doc-header"><div class="eyebrow">COMPANY INTELLIGENCE / RESEARCH BRIEF</div><h2>${escape(report.task.company)}<br>企业研究简报</h2><p>研究范围：${report.task.start} — ${report.task.end}<br>关注主题：${escape(report.task.topic)}<br>生成方式：${report.mode === 'deepseek' ? 'DeepSeek 辅助整理 · 待人工核查' : '规则摘录 · 未调用模型'}<br>生成时间：${escape(new Date(report.generatedAt).toLocaleString('zh-CN', { hour12: false }))}</p></div><h3>主题概述</h3>${report.claims.map(claim => `<p class="claim">${escape(claim.text)} ${claim.sourceIds.map(citation).join('')}</p>`).join('')}<h3>资料时间线 <span class="muted small">/ 按发布日期</span></h3>${[...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).map(source => `<div class="timeline-row"><span class="timeline-date">${source.date || '日期未知'}</span><div>${escape(source.title)} ${citation(source.id)}</div></div>`).join('')}<h3>信息缺口与待核实事项</h3><div class="report-gap"><ul>${report.gaps.map(gap => `<li>${escape(gap)}</li>`).join('')}</ul></div><h3>引用来源 <span class="muted small">/ ${report.sources.length} SOURCES</span></h3>${report.sources.map((source, index) => `<div id="report-source-${index + 1}" class="report-source" tabindex="-1"><strong>[${index + 1}] ${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')} · 发布：${source.date || '未知'} · 录入：${escape(source.collectedAt)}</p><p>${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开原文 ↗</a>` : '无外部链接 · 虚构演示资料'}</p><details><summary>查看纳入时保存的文本</summary><div class="saved-text">${escape(source.text)}</div></details></div>`).join('')}</div>`;
+  $('#report-body').innerHTML = `<div class="report-document"><div class="report-doc-header"><h2>${escape(report.task.company)}</h2><div class="doc-title">企业研究简报</div><p>研究范围：${report.task.start} — ${report.task.end}<br>关注主题：${escape(report.task.topic)}<br>生成方式：${report.mode === 'deepseek' ? 'DeepSeek 辅助整理 · 待人工核查' : '规则摘录 · 未调用模型'}<br>生成时间：${escape(new Date(report.generatedAt).toLocaleString('zh-CN', { hour12: false }))}</p></div><h3>主题概述</h3>${report.claims.map(claim => `<p class="claim">${escape(claim.text)} ${claim.sourceIds.map(citation).join('')}</p>`).join('')}<h3>资料时间线 <span class="muted small">（按发布日期）</span></h3>${[...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).map(source => `<div class="timeline-row"><span class="timeline-date">${source.date || '日期未知'}</span><div>${escape(source.title)} ${citation(source.id)}</div></div>`).join('')}<h3>信息缺口与待核实事项</h3><div class="report-gap"><ul>${report.gaps.map(gap => `<li>${escape(gap)}</li>`).join('')}</ul></div><h3>引用来源 <span class="muted small">（${report.sources.length} 条）</span></h3>${report.sources.map((source, index) => `<div id="report-source-${source.sourceNumber}" class="report-source" tabindex="-1"><strong>[资料 ${source.sourceNumber}] ${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')} · 发布：${source.date || '未知'} · 录入：${escape(source.collectedAt)}</p><p>${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开原文</a>` : '无外部链接 · 虚构演示资料'}</p><details><summary>查看纳入时保存的文本</summary><div class="saved-text">${escape(source.text)}</div></details></div>`).join('')}</div>`;
 }
 
 function openSourceDialog() {
@@ -291,7 +314,7 @@ $('#generate-report').addEventListener('click', async () => {
         if (requestController === controller) {
           requestController = null;
           $('#generate-report').disabled = !eligibleSources(state.sources).length;
-          $('#generate-report').textContent = '生成简报 ↗';
+          $('#generate-report').textContent = '生成简报';
           $('#export-report').disabled = !state.report;
         }
       }

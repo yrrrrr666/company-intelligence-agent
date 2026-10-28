@@ -4,74 +4,75 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="企业情报研究助手：收集资料、核查来源、整理可追溯的研究简报。">
-  <title>企业情报研究助手 · 研究工作台</title>
+  <title>知序 · 企业情报研究助手</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/app.mjs"></script>
 </head>
 <body>
+  <svg class="icon-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m10 5-7 7 7 7M3 12h18"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H5v18h14V8zM14 3v5h5M8 12h8M8 16h6"/></symbol>
+  </svg>
   <a class="skip-link" href="#main">跳到主要内容</a>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <a class="brand" href="/" aria-label="企业情报研究助手首页"><img src="/favicon.svg" width="36" height="36" alt=""><span>知序<span class="brand-en">RESEARCH DESK</span></span></a>
-      <div class="workspace-label">个人研究空间 <span>V0.1</span></div>
-      <div class="sidebar-item"><span class="small-symbol">◫</span> 研究工作台 <span class="sidebar-dot"></span></div>
-      <nav class="steps" aria-label="研究流程">
-        <button data-step="create" class="step active" aria-current="step"><span class="step-number">01</span><span>定义研究<span class="step-note">确定公司与研究范围</span></span></button>
-        <button data-step="collect" class="step" disabled><span class="step-number">02</span><span>收集资料<span class="step-note">录入来源与原文</span></span></button>
-        <button data-step="review" class="step" disabled><span class="step-number">03</span><span>审核与核查<span class="step-note">让依据清晰可见</span></span></button>
-        <button data-step="report" class="step" disabled><span class="step-number">04</span><span>研究简报<span class="step-note">整理、引用与导出</span></span></button>
-      </nav>
-      <div class="sidebar-bottom"><div class="connection"><span class="status-dot"></span><span>本地原型</span></div><p id="model-status">正在检查模型配置…</p><p>仅保存当前任务于此浏览器。<br>请及时导出需要保留的简报。</p><button id="clear-workspace" class="sidebar-link">清空当前任务</button><div class="profile"><span class="avatar">研</span><span>个人工作台<small>单人 · 单次研究</small></span></div></div>
-    </aside>
-    <div class="main-shell">
-      <header class="topbar"><div><span class="breadcrumb">工作空间</span><span class="slash">/</span><strong>研究工作台</strong></div><div class="topbar-meta"><button id="clear-workspace-mobile" class="mobile-clear" aria-label="清空当前任务">清空任务</button><span class="prototype-badge">交互原型</span><span class="topbar-date">让研究有据可查</span></div></header>
-      <main id="main" tabindex="-1">
-        <div id="storage-warning" class="notice warning" hidden>浏览器无法保存当前任务。请在离开前导出简报。</div>
-        <div id="demo-notice" class="notice demo" hidden><span>演示模式</span> 当前公司与资料均为虚构，仅用于体验研究流程。</div>
-
-        <section id="view-create" class="view" aria-labelledby="create-heading">
-          <div class="page-heading"><div><div class="eyebrow">FROM SOURCES TO INSIGHTS</div><h1 id="create-heading">好的研究，<br>从清晰的问题开始<span class="accent">。</span></h1><p>定义研究范围，把分散的资料整理成有来源的简报。</p></div><div class="heading-mark" aria-hidden="true"><span class="mark-line"></span><span class="mark-square">↗</span><span class="mark-caption">SOURCE / CHECK / REPORT</span></div></div>
-          <div class="create-layout">
-            <form id="task-form" class="card task-card" novalidate>
-              <div class="card-title"><h2>创建研究任务</h2><span class="muted small">01 / 定义研究</span></div>
-              <div class="field"><label for="company">目标公司 <span class="required">*</span></label><input id="company" name="company" maxlength="100" placeholder="输入完整公司名称" required aria-describedby="company-error"><span class="field-error" id="company-error"></span></div>
-              <div class="date-fields"><div class="field"><label for="start">起始日期 <span class="required">*</span></label><input id="start" name="start" type="date" required aria-describedby="start-error"><span class="field-error" id="start-error"></span></div><span class="date-divider">—</span><div class="field"><label for="end">结束日期 <span class="required">*</span></label><input id="end" name="end" type="date" required aria-describedby="end-error"><span class="field-error" id="end-error"></span></div></div>
-              <div class="field"><label for="topic">关注主题 <span class="required">*</span></label><textarea id="topic" name="topic" rows="3" maxlength="200" placeholder="例如：产品发布、业务合作、市场布局" required aria-describedby="topic-error"></textarea><span class="field-error" id="topic-error"></span></div>
-              <div class="suggestions"><span>主题参考</span><button type="button" data-topic="产品发布">产品发布</button><button type="button" data-topic="业务合作">业务合作</button><button type="button" data-topic="市场布局">市场布局</button></div>
-              <div class="form-bottom"><p>当前支持手动录入资料，<br>尚未接入自动搜索。</p><button class="button primary" type="submit">创建研究任务 <span aria-hidden="true">↗</span></button></div>
-            </form>
-            <div class="create-aside"><div class="sample-card"><div class="sample-top"><span class="outline-tag">QUICK START</span><span class="small">↗</span></div><h2>先看看，一份研究<br>如何从资料开始。</h2><p>用一组虚构资料，体验来源审核、待核实标记和简报导出。</p><div class="sample-preview"><div class="mini-line"><span class="mini-dot"></span><span>产品发布公告</span><span class="mini-pill">来源 01</span></div><div class="mini-line"><span class="mini-dot"></span><span>业务合作报道</span><span class="mini-pill">来源 02</span></div><div class="mini-line faded"><span class="mini-dot orange"></span><span>发布时间未知</span><span class="mini-pill">待核实</span></div></div><button id="load-demo" class="button sample-button">体验示例任务 <span aria-hidden="true">→</span></button><span class="sample-foot">虚构公司 · 5 条演示资料 · 无需 API</span></div><div class="principle-card"><span class="principle-icon">⌁</span><div><strong>来源先行，判断在后</strong><p>每条资料保留来源与文本，<br>每次纳入由你确认。</p></div></div></div>
-          </div>
-          <div class="workflow-strip"><div><span>01</span><strong>定义范围</strong><small>公司 / 时间 / 主题</small></div><b aria-hidden="true">→</b><div><span>02</span><strong>收集资料</strong><small>来源与原文一起留存</small></div><b aria-hidden="true">→</b><div><span>03</span><strong>人工核查</strong><small>筛选依据，标记疑问</small></div><b aria-hidden="true">→</b><div><span>04</span><strong>导出简报</strong><small>结论可回到来源</small></div></div>
-        </section>
-
-        <section id="view-collect" class="view" hidden aria-labelledby="collect-heading">
-          <div class="section-heading"><div><div class="eyebrow">02 / SOURCE COLLECTION</div><h1 id="collect-heading">把研究资料，放到一起。</h1><p class="scope-line"></p></div><button class="button primary" data-action="add-source">＋ 录入资料</button></div>
-          <div class="notice neutral"><strong>手动收集模式</strong> 自动搜索和网页读取尚未接入。请自行打开来源，将需要研究的原文片段录入下方。</div>
-          <div class="collection-layout"><div class="card"><div class="card-title"><h2>检索词参考</h2><span class="text-label">规则组合 · 未执行搜索</span></div><p class="muted">复制到你常用的搜索工具，找到资料后录入链接和文本。</p><div id="queries" class="query-list"></div></div><div class="card collection-summary"><div class="card-title"><h2>资料准备</h2><span class="small">SOURCE CHECK</span></div><div class="big-count" id="collect-count">0 <small>条资料</small></div><p id="collect-summary" class="muted"></p><button class="button secondary" data-go="review">前往资料审核 →</button></div></div>
-          <div class="card"><div class="card-title"><h2>已录入的资料</h2><span id="source-count" class="muted small"></span></div><div id="collection-list"></div></div>
-        </section>
-
-        <section id="view-review" class="view" hidden aria-labelledby="review-heading">
-          <div class="section-heading"><div><div class="eyebrow">03 / EVIDENCE REVIEW</div><h1 id="review-heading">每一次纳入，都有依据。</h1><p class="scope-line"></p></div><button class="button secondary" data-action="add-source">＋ 录入资料</button></div>
-          <div id="review-stats" class="stats-grid"></div>
-          <div class="review-toolbar"><div class="filter-group" role="group" aria-label="筛选资料"><button data-filter="all" class="selected" aria-pressed="true">全部资料</button><button data-filter="pending" aria-pressed="false">待审核</button><button data-filter="included" aria-pressed="false">已纳入</button><button data-filter="flagged" aria-pressed="false">待核实</button></div><span class="muted small">点击资料查看保存文本</span></div>
-          <div class="review-layout"><div id="source-list" class="source-list" aria-label="资料列表"></div><article id="source-detail" class="card source-detail" aria-label="资料详情"></article></div>
-          <div class="review-bottom"><p id="selection-hint"></p><button id="to-report" class="button primary" data-go="report">整理研究简报 <span aria-hidden="true">→</span></button></div>
-        </section>
-
-        <section id="view-report" class="view" hidden aria-labelledby="report-heading">
-          <div class="section-heading"><div><div class="eyebrow">04 / RESEARCH BRIEF</div><h1 id="report-heading">从资料，到一份可核查的简报。</h1><p class="scope-line"></p></div><button class="button secondary" data-go="review">← 返回审核</button></div>
-          <div class="report-controls card"><div><h2>选择整理方式</h2><p id="report-hint">规则摘录保留来源文本，不调用模型。</p></div><div class="report-actions"><label class="sr-only" for="report-mode">简报生成方式</label><select id="report-mode"><option value="extract">规则摘录 · 无需 API</option><option value="deepseek" disabled>DeepSeek · 未配置</option></select><button id="generate-report" class="button primary">生成简报 <span aria-hidden="true">↗</span></button><button id="export-report" class="button secondary" disabled>↓ 导出 Markdown</button></div><p id="report-error" class="field-error" role="alert"></p></div>
-          <div id="report-body" class="report-body card"><div class="empty-state"><span class="empty-symbol">≡</span><h2>你的简报将在这里生成</h2><p>先纳入有正文的资料，再选择整理方式。<br>审核选择变更后，需要重新生成简报。</p></div></div>
-        </section>
-        <footer class="page-footer"><span>知序 · 企业情报研究助手</span><span>V0.1 原型 / 公开资料 · 人工核查 · 来源追溯</span></footer>
-      </main>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="知序，企业情报研究助手首页"><img src="/favicon.svg" width="30" height="30" alt=""><strong>知序</strong><span class="brand-description">企业情报研究助手</span></a>
+      <div class="topbar-actions"><span class="local-label">本地工作台</span><button id="clear-workspace" class="header-button">清空当前任务</button><button id="clear-workspace-mobile" class="header-button mobile-clear">清空任务</button></div>
     </div>
+  </header>
+  <div class="stepbar">
+    <nav class="steps" aria-label="研究流程">
+      <button data-step="create" class="step active" aria-current="step"><span class="step-number">1</span><span>定义研究<small>公司、时间与主题</small></span></button>
+      <button data-step="collect" class="step" disabled><span class="step-number">2</span><span>收集资料<small>录入链接与正文</small></span></button>
+      <button data-step="review" class="step" disabled><span class="step-number">3</span><span>审核资料<small>核查并选择来源</small></span></button>
+      <button data-step="report" class="step" disabled><span class="step-number">4</span><span>研究简报<small>整理与导出</small></span></button>
+    </nav>
   </div>
-
-  <dialog id="source-dialog" class="source-dialog" aria-labelledby="source-dialog-title"><form id="source-form" novalidate><div class="dialog-heading"><div><div class="eyebrow">ADD A SOURCE</div><h2 id="source-dialog-title">录入研究资料</h2></div><button type="button" class="icon-button" data-close-dialog aria-label="关闭录入窗口">×</button></div><p class="muted small">请只录入有权使用的公开资料。本原型不会访问链接。</p><div class="field"><label for="source-title">资料标题 <span class="required">*</span></label><input id="source-title" name="title" maxlength="200" required></div><div class="field"><label for="source-url">原文链接 <span class="required">*</span></label><input id="source-url" name="url" type="url" maxlength="2048" placeholder="https://" required></div><div class="two-fields"><div class="field"><label for="source-publisher">来源名称</label><input id="source-publisher" name="publisher" maxlength="120" placeholder="例如：公司官网"></div><div class="field"><label for="source-date">发布时间</label><input id="source-date" name="date" type="date"><span class="small muted">无法确认时留空</span></div></div><div class="field"><label for="source-text">保存文本 <span class="required">*</span></label><textarea id="source-text" name="text" rows="6" maxlength="12000" placeholder="粘贴需要研究的原文片段，最多 12000 字" required></textarea></div><p id="source-error" class="field-error" role="alert"></p><div class="dialog-actions"><button type="button" class="button secondary" data-close-dialog>取消</button><button class="button primary" type="submit">保存资料 →</button></div></form></dialog>
+  <main id="main" tabindex="-1">
+    <div id="storage-warning" class="notice warning" role="status" hidden>浏览器无法保存当前任务。请在离开前导出简报。</div>
+    <section id="task-context" class="task-context" aria-label="当前研究范围" hidden></section>
+    <div id="demo-notice" class="notice demo" hidden><strong>虚构演示</strong><span>当前公司与资料均为虚构，仅用于体验研究流程。</span></div>
+    <section id="view-create" class="view" aria-labelledby="create-heading">
+      <div class="section-heading"><div><h1 id="create-heading">定义研究范围</h1><p>输入公司、时间和主题，然后收集资料、审核来源并整理简报。</p></div></div>
+      <div class="create-layout">
+        <form id="task-form" class="task-form" novalidate>
+          <div class="form-intro"><h2>研究任务</h2><span class="small muted">以下内容均为必填</span></div>
+          <div class="field"><label for="company">目标公司</label><input id="company" name="company" maxlength="100" placeholder="请输入完整公司名称" required aria-describedby="company-help company-error"><span id="company-help" class="field-help">尽量使用全称，减少同名公司混淆。</span><span class="field-error" id="company-error"></span></div>
+          <fieldset class="date-group"><legend>研究时间</legend><div class="date-fields"><div class="field"><label for="start">起始日期</label><input id="start" name="start" type="date" required aria-describedby="start-error"><span class="field-error" id="start-error"></span></div><div class="field"><label for="end">结束日期</label><input id="end" name="end" type="date" required aria-describedby="end-error"><span class="field-error" id="end-error"></span></div></div></fieldset>
+          <div class="field"><label for="topic">关注主题</label><textarea id="topic" name="topic" rows="3" maxlength="200" placeholder="例如：产品发布、业务合作，以及需要关注的具体问题" required aria-describedby="topic-error"></textarea><span class="field-error" id="topic-error"></span></div>
+          <div class="suggestions" aria-label="主题参考"><span>快速填写</span><button type="button" data-topic="产品发布">产品发布</button><button type="button" data-topic="业务合作">业务合作</button><button type="button" data-topic="市场布局">市场布局</button></div>
+          <div class="form-bottom"><p>创建后进入资料收集，<br>当前支持手动录入公开资料。</p><button class="button primary" type="submit">创建研究任务</button></div>
+        </form>
+        <aside class="create-aside" aria-label="示例与使用说明">
+          <section class="sample-section"><h2>先用示例体验</h2><p>无需配置服务，先试一次资料审核与简报导出。</p><div class="sample-company"><strong>示例科技</strong><span class="tag">虚构公司</span></div><dl class="sample-scope"><div><dt>研究时间</dt><dd>2026-09-01 至 2026-09-30</dd></div><div><dt>关注主题</dt><dd>产品发布与业务合作</dd></div></dl><ul class="sample-sources"><li><span>产品发布与合作资料</span><span>2 条</span></li><li><span>发布时间未知</span><span>1 条</span></li><li><span>范围外或无正文</span><span>2 条</span></li></ul><button id="load-demo" class="button secondary">载入示例任务</button><p class="small muted sample-note">5 条自主编写的虚构资料，仅用于交互体验。</p></section>
+          <section class="capability-note"><h2>本轮支持</h2><p>手动录入来源与原文，逐条审核后生成简报。自动搜索和网页读取尚未接入。</p></section>
+        </aside>
+      </div>
+    </section>
+    <section id="view-collect" class="view" hidden aria-labelledby="collect-heading">
+      <div class="section-heading"><div><h1 id="collect-heading">收集资料</h1><p>保存来源链接和原文片段，准备核查依据。</p></div><button class="button primary" data-action="add-source"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>录入资料</button></div>
+      <div class="notice neutral"><strong>手动收集</strong><span>本原型不会访问来源链接。请自行打开原文，将需要研究的内容录入工作台。</span></div>
+      <div class="collection-layout"><section class="collection-queries"><div class="section-title"><h2>检索词参考</h2><span class="small muted">规则组合，尚未执行搜索</span></div><p class="muted">可复制到你常用的搜索工具，找到资料后录入。</p><div id="queries" class="query-list"></div></section><section class="collection-summary"><h2>资料准备</h2><div class="collection-total" id="collect-count">0 <small>条资料</small></div><p id="collect-summary" class="muted"></p><button class="button secondary" data-go="review">前往资料审核</button></section></div>
+      <section class="collection-records"><div class="section-title"><h2>已录入资料</h2><span id="source-count" class="muted small"></span></div><div id="collection-list"></div></section>
+    </section>
+    <section id="view-review" class="view" hidden aria-labelledby="review-heading">
+      <div class="section-heading"><div><h1 id="review-heading">审核资料</h1><p>查看来源和保存文本，决定哪些资料用于简报。</p></div><button class="button secondary" data-action="add-source"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>录入资料</button></div>
+      <div id="review-stats" class="review-stats" aria-label="资料审核统计"></div>
+      <div class="review-workspace"><section class="source-index" aria-label="研究资料"><div class="review-toolbar"><div class="filter-group" role="group" aria-label="筛选资料"><button data-filter="all" class="selected" aria-pressed="true">全部资料</button><button data-filter="pending" aria-pressed="false">待审核</button><button data-filter="included" aria-pressed="false">已纳入</button><button data-filter="flagged" aria-pressed="false">待核实</button></div></div><div id="source-list" class="source-list" aria-label="资料列表"></div></section><article id="source-detail" class="source-detail" tabindex="-1" aria-label="资料详情"></article></div>
+      <div class="review-bottom"><p id="selection-hint"></p><button id="to-report" class="button primary" data-go="report">整理研究简报</button></div>
+    </section>
+    <section id="view-report" class="view" hidden aria-labelledby="report-heading">
+      <div class="section-heading"><div><h1 id="report-heading">研究简报</h1><p>基于纳入的资料整理，事实与来源仍需人工核查。</p></div><button class="button secondary" data-go="review"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>返回审核</button></div>
+      <section class="report-controls" aria-label="简报生成与导出"><div class="report-mode-field"><label for="report-mode">整理方式</label><select id="report-mode"><option value="extract">规则摘录（无需 API）</option><option value="deepseek" disabled>DeepSeek（未配置）</option></select></div><div class="report-actions"><button id="generate-report" class="button primary">生成简报</button><button id="export-report" class="button secondary" disabled><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>导出 Markdown</button></div><p id="report-hint">规则摘录保留来源文本，不调用模型。</p><p id="report-error" class="field-error" role="alert"></p></section>
+      <div id="report-body" class="report-body"><div class="empty-state"><svg class="empty-icon" aria-hidden="true"><use href="#i-file"/></svg><h2>尚未生成简报</h2><p>先纳入有正文的资料，再选择整理方式。<br>审核选择变更后，需要重新生成简报。</p></div></div>
+    </section>
+    <footer class="page-footer"><span>当前任务仅保存在此浏览器</span><span id="model-status" role="status">正在检查模型配置…</span></footer>
+  </main>
+  <dialog id="source-dialog" class="source-dialog" aria-labelledby="source-dialog-title"><form id="source-form" novalidate><div class="dialog-heading"><h2 id="source-dialog-title">录入研究资料</h2><button type="button" class="icon-button" data-close-dialog aria-label="关闭录入窗口"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><p class="muted">请录入有权使用的公开资料，保留便于核查的原文。</p><div class="field"><label for="source-title">资料标题 <span class="required">*</span></label><input id="source-title" name="title" maxlength="200" required></div><div class="field"><label for="source-url">原文链接 <span class="required">*</span></label><input id="source-url" name="url" type="url" maxlength="2048" placeholder="https://" required></div><div class="two-fields"><div class="field"><label for="source-publisher">来源名称</label><input id="source-publisher" name="publisher" maxlength="120" placeholder="例如：公司官网"></div><div class="field"><label for="source-date">发布时间</label><input id="source-date" name="date" type="date"><span class="field-help">无法确认时留空</span></div></div><div class="field"><label for="source-text">保存文本 <span class="required">*</span></label><textarea id="source-text" name="text" rows="6" maxlength="12000" placeholder="粘贴需要研究的原文片段，最多 12000 字" required></textarea></div><p id="source-error" class="field-error" role="alert"></p><div class="dialog-actions"><button type="button" class="button secondary" data-close-dialog>取消</button><button class="button primary" type="submit">保存资料</button></div></form></dialog>
   <dialog id="confirm-dialog" class="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title">替换当前任务？</h2><p id="confirm-description"></p><div class="dialog-actions"><button id="confirm-cancel" class="button secondary">取消</button><button id="confirm-accept" class="button primary">确认替换</button></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>

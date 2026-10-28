@@ -27,6 +27,12 @@ const base = 'http://127.0.0.1:4175';
     await page.goto(base);
     await page.waitForFunction(() => document.querySelector('#model-status').textContent.includes('规则摘录'));
     assert.equal(await page.locator('#report-mode option[value=deepseek]').isDisabled(), true);
+    assert.equal(await page.locator('.eyebrow').count(), 0);
+    assert.equal(await page.locator('#company').evaluate(node => parseFloat(getComputedStyle(node).fontSize) >= 14), true);
+    await page.locator('#company').focus();
+    await page.keyboard.press('Tab');
+    assert.equal(await page.locator('#start').evaluate(node => node === document.activeElement && getComputedStyle(node).outlineStyle !== 'none'), true);
+    await page.locator('#start').blur();
     await page.screenshot({ path: path.join(root, 'outputs', '01-create-desktop.png'), fullPage: true });
     await page.locator('#task-form button[type=submit]').click();
     assert.match(await page.locator('#company-error').innerText(), /填写/);
@@ -40,6 +46,8 @@ const base = 'http://127.0.0.1:4175';
     await page.locator('#task-form button[type=submit]').click();
     assert.equal(await page.locator('#view-collect').isVisible(), true);
     assert.match(await page.locator('#collection-list').innerText(), /还没有/);
+    await page.evaluate(() => { document.querySelector('#toast').hidden = true; });
+    await page.screenshot({ path: path.join(root, 'outputs', '06-collect-desktop.png'), fullPage: true });
 
     async function addSource(title, url, text, date = '') {
       await page.locator('#view-collect [data-action=add-source]').first().click();
@@ -60,6 +68,7 @@ const base = 'http://127.0.0.1:4175';
     assert.match(await page.locator('#source-detail').innerText(), /发布时间未知/);
     assert.equal(await page.locator('#source-detail script').count(), 0);
     assert.equal(await page.evaluate(() => window.hacked), undefined);
+    assert.equal(await page.locator('#source-detail .saved-text').evaluate(node => parseFloat(getComputedStyle(node).fontSize) >= 14), true);
     await page.locator('#include-source').click();
     await page.locator('[data-select-source]').nth(1).click();
     await page.locator('#exclude-source').click();
@@ -107,6 +116,16 @@ const base = 'http://127.0.0.1:4175';
     await page.locator('[data-filter=pending]').click();
     assert.equal(await page.locator('[data-select-source]').count(), 2);
     await page.locator('[data-filter=all]').click();
+    for (const width of [1280, 1024, 768, 659]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `Review overflow at ${width}px`);
+      assert.equal(await page.locator('#include-source').isVisible(), true);
+      if (width === 659) {
+        await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); document.querySelector('#toast').hidden = true; });
+        await page.screenshot({ path: path.join(root, 'outputs', '07-review-user-659.png'), fullPage: true });
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 1080 });
     await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); document.querySelector('#toast').hidden = true; });
     await page.screenshot({ path: path.join(root, 'outputs', '02-review-desktop.png'), fullPage: true });
     await page.locator('#to-report').click();
@@ -146,11 +165,21 @@ const base = 'http://127.0.0.1:4175';
     await mobilePage.locator('#load-demo').click();
     assert.equal(await mobilePage.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await mobilePage.locator('[data-select-source=demo-1]').click();
+    assert.equal(await mobilePage.locator('#source-detail').evaluate(node => {
+      const box = node.getBoundingClientRect();
+      return box.top >= 0 && box.top < innerHeight;
+    }), true, 'Selecting a source on mobile must bring its detail into view');
+    await mobilePage.locator('#back-to-sources').click();
+    assert.equal(await mobilePage.locator('#source-list').evaluate(node => node.getBoundingClientRect().top < innerHeight), true);
+    await mobilePage.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); document.querySelector('#toast').hidden = true; });
+    await mobilePage.screenshot({ path: path.join(root, 'outputs', '08-review-mobile.png'), fullPage: true });
+    await mobilePage.locator('[data-select-source=demo-1]').click();
     await mobilePage.locator('#include-source').click();
     await mobilePage.locator('#to-report').click();
     await mobilePage.locator('#generate-report').click();
     assert.equal(await mobilePage.locator('.claim').count(), 1);
     assert.equal(await mobilePage.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await mobilePage.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); document.querySelector('#toast').hidden = true; });
     await mobilePage.screenshot({ path: path.join(root, 'outputs', '05-report-mobile.png'), fullPage: true });
     await mobilePage.locator('#clear-workspace-mobile').click();
     await mobilePage.locator('#confirm-accept').click();

@@ -103,7 +103,8 @@ export function createReport(task, sources, claims = null) {
   const failed = sources.filter(source => source.access !== 'available').length;
   if (pending) gaps.push(`另有 ${pending} 条资料尚未审核，未用于本报告。`);
   if (failed) gaps.push(`${failed} 条资料没有可用正文，未用于本报告。`);
-  return { generatedAt, mode: claims ? 'deepseek' : 'extract', task: { ...task }, sources: structuredClone(selected), claims: claims || selected.map(source => ({ text: source.text.trim().slice(0, 500), sourceIds: [source.id] })), gaps };
+  const snapshots = selected.map(source => ({ ...structuredClone(source), sourceNumber: sources.indexOf(source) + 1 }));
+  return { generatedAt, mode: claims ? 'deepseek' : 'extract', task: { ...task }, sources: snapshots, claims: claims || selected.map(source => ({ text: source.text.trim().slice(0, 500), sourceIds: [source.id] })), gaps };
 }
 
 export function markdownText(value) {
@@ -112,7 +113,7 @@ export function markdownText(value) {
 
 export function reportMarkdown(report) {
   const md = markdownText;
-  const number = id => report.sources.findIndex(source => source.id === id) + 1;
+  const number = id => report.sources.find(source => source.id === id)?.sourceNumber;
   const ref = id => `[来源 ${number(id)}](#source-${number(id)})`;
   const lines = [`# ${md(report.task.company)} · 企业研究简报`, '', `研究范围：${report.task.start} 至 ${report.task.end}`, `关注主题：${md(report.task.topic)}`, `生成时间：${report.generatedAt}`, `生成方式：${report.mode === 'deepseek' ? 'DeepSeek 辅助整理（待人工核查）' : '规则摘录（未调用模型）'}`, '', '## 主题概述', ''];
   for (const claim of report.claims) lines.push(`- ${md(claim.text)} ${claim.sourceIds.map(ref).join('、')}`);
@@ -120,7 +121,7 @@ export function reportMarkdown(report) {
   for (const source of [...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))) lines.push(`- ${source.date || '日期未知'}：${md(source.title)} ${ref(source.id)}`);
   lines.push('', '## 信息缺口与待核实事项', '', ...report.gaps.map(gap => `- ${md(gap)}`), '', '## 引用来源', '');
   report.sources.forEach((source, index) => {
-    lines.push(`<a id="source-${index + 1}"></a>`, `### 来源 ${index + 1}：${md(source.title)}`, '', `来源名称：${md(source.publisher || '未知')}  `, `发布时间：${source.date || '未知'}  `, `采集时间：${source.collectedAt}  `, `链接：${source.url ? `[打开原文](${encodeURI(source.url).replace(/\(/g, '%28').replace(/\)/g, '%29')})` : '无外部链接（虚构演示或手动录入）'}`, '', '保存文本：', '', ...source.text.split(/\r?\n/).map(line => `> ${md(line)}`), '');
+    lines.push(`<a id="source-${source.sourceNumber}"></a>`, `### 来源 ${source.sourceNumber}：${md(source.title)}`, '', `来源名称：${md(source.publisher || '未知')}  `, `发布时间：${source.date || '未知'}  `, `采集时间：${source.collectedAt}  `, `链接：${source.url ? `[打开原文](${encodeURI(source.url).replace(/\(/g, '%28').replace(/\)/g, '%29')})` : '无外部链接（虚构演示或手动录入）'}`, '', '保存文本：', '', ...source.text.split(/\r?\n/).map(line => `> ${md(line)}`), '');
   });
   return lines.join('\n');
 }
