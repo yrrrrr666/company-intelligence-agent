@@ -140,10 +140,7 @@ function renderReview() {
   $$('[data-select-source]').forEach(button => button.addEventListener('click', () => {
     selectedId = button.dataset.selectSource;
     renderReview();
-    if (matchMedia('(max-width: 700px)').matches) {
-      $('#source-detail').focus({ preventScroll: true });
-      $('#source-detail').scrollIntoView({ block: 'start', behavior: 'instant' });
-    } else $(`[data-select-source="${selectedId}"]`)?.focus({ preventScroll: true });
+    $(`[data-select-source="${selectedId}"]`)?.focus({ preventScroll: true });
   }));
   renderDetail();
   $('#selection-hint').textContent = included.length ? `已纳入 ${included.length} 条资料。简报仅使用纳入且有正文的来源。` : '尚未纳入资料。请先查看原文，再选择纳入。';
@@ -157,7 +154,7 @@ function renderDetail() {
     return;
   }
   const issues = sourceIssues(source, state.task, state.sources);
-  $('#source-detail').innerHTML = `<button id="back-to-sources" class="link-button detail-back">返回资料列表</button><div class="detail-top"><span>资料 ${state.sources.indexOf(source) + 1}</span><span>${escape(reviewLabel(source))}</span></div>
+  $('#source-detail').innerHTML = `<div class="detail-top"><span>资料 ${state.sources.indexOf(source) + 1}</span><span>${escape(reviewLabel(source))}</span></div>
     <h2>${escape(source.title)}</h2>
     <dl class="detail-facts"><div><dt>来源名称</dt><dd>${escape(source.publisher || '未知')}</dd></div><div><dt>发布时间</dt><dd>${escape(source.date || '未知')}</dd></div><div><dt>录入时间</dt><dd>${escape(new Date(source.collectedAt).toLocaleString('zh-CN', { hour12: false }))}</dd></div><div><dt>资料状态</dt><dd>${source.access === 'available' ? '已录入文本，未联网读取' : '无可用正文（失败演示）'}</dd></div></dl>
     <div class="source-link">${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开来源 ${icon('external')}</a><p class="muted small">${escape(source.url)}</p>` : '无外部链接（虚构演示资料）'}</div>
@@ -168,10 +165,6 @@ function renderDetail() {
   $('#include-source').addEventListener('click', () => reviewSource(source.id, 'included'));
   $('#exclude-source').addEventListener('click', () => reviewSource(source.id, 'excluded'));
   $('#reset-review')?.addEventListener('click', () => reviewSource(source.id, 'pending'));
-  $('#back-to-sources').addEventListener('click', () => {
-    $(`[data-select-source="${selectedId}"]`)?.focus({ preventScroll: true });
-    $('.source-index').scrollIntoView({ block: 'start', behavior: 'instant' });
-  });
   $('#flag-source').addEventListener('change', event => {
     source.flagged = event.target.checked;
     invalidateReport(); persist(); renderReview();
@@ -231,8 +224,23 @@ $('#task-form').addEventListener('submit', event => {
   else action();
 });
 
+function setDemoSidebarOpen(open, restoreFocus = true) {
+  $('#demo-sidebar').hidden = !open;
+  $('#toggle-demo-sidebar').setAttribute('aria-expanded', String(open));
+  if (open) $('#close-demo-sidebar').focus({ preventScroll: true });
+  else if (restoreFocus) $('#toggle-demo-sidebar').focus({ preventScroll: true });
+}
+$('#toggle-demo-sidebar').addEventListener('click', () => setDemoSidebarOpen($('#demo-sidebar').hidden));
+$('#close-demo-sidebar').addEventListener('click', () => setDemoSidebarOpen(false));
+$('#demo-sidebar').addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !document.querySelector('dialog[open]')) {
+    event.preventDefault();
+    setDemoSidebarOpen(false);
+  }
+});
+
 $('#load-demo').addEventListener('click', () => {
-  const action = () => { replaceWorkspace(demoWorkspace(), 'review'); toast('已载入 5 条虚构资料，请逐条审核'); };
+  const action = () => { setDemoSidebarOpen(false, false); replaceWorkspace(demoWorkspace(), 'review'); toast('已载入 5 条虚构资料，请逐条审核'); };
   if (state.task) confirmAction('载入示例任务？', '这会替换当前任务和资料。示例中的公司、资料和事件均为虚构。', action, '载入示例');
   else action();
 });
@@ -246,7 +254,6 @@ function clearWorkspace() {
   }, '确认清空');
 }
 $('#clear-workspace').addEventListener('click', clearWorkspace);
-$('#clear-workspace-mobile').addEventListener('click', clearWorkspace);
 
 $('#confirm-cancel').addEventListener('click', () => $('#confirm-dialog').close());
 $('#confirm-accept').addEventListener('click', () => { const action = pendingConfirmation; $('#confirm-dialog').close(); pendingConfirmation = null; action?.(); });

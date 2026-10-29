@@ -21,7 +21,7 @@
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="/" aria-label="知序，企业情报研究助手首页"><img src="/favicon.svg" width="30" height="30" alt=""><strong>知序</strong><span class="brand-description">企业情报研究助手</span></a>
-      <div class="topbar-actions"><span class="local-label">本地工作台</span><button id="clear-workspace" class="header-button">清空当前任务</button><button id="clear-workspace-mobile" class="header-button mobile-clear">清空任务</button></div>
+      <div class="topbar-actions"><span class="local-label">本地工作台</span><button id="toggle-demo-sidebar" class="header-button" aria-controls="demo-sidebar" aria-expanded="false">示例体验</button><button id="clear-workspace" class="header-button">清空当前任务</button></div>
     </div>
   </header>
   <div class="stepbar">
@@ -32,6 +32,7 @@
       <button data-step="report" class="step" disabled><span class="step-number">4</span><span>研究简报<small>整理与导出</small></span></button>
     </nav>
   </div>
+  <div class="workspace-shell">
   <main id="main" tabindex="-1">
     <div id="storage-warning" class="notice warning" role="status" hidden>浏览器无法保存当前任务。请在离开前导出简报。</div>
     <section id="task-context" class="task-context" aria-label="当前研究范围" hidden></section>
@@ -47,10 +48,6 @@
           <div class="suggestions" aria-label="主题参考"><span>快速填写</span><button type="button" data-topic="产品发布">产品发布</button><button type="button" data-topic="业务合作">业务合作</button><button type="button" data-topic="市场布局">市场布局</button></div>
           <div class="form-bottom"><p>创建后进入资料收集，<br>当前支持手动录入公开资料。</p><button class="button primary" type="submit">创建研究任务</button></div>
         </form>
-        <aside class="create-aside" aria-label="示例与使用说明">
-          <section class="sample-section"><h2>先用示例体验</h2><p>无需配置服务，先试一次资料审核与简报导出。</p><div class="sample-company"><strong>示例科技</strong><span class="tag">虚构公司</span></div><dl class="sample-scope"><div><dt>研究时间</dt><dd>2026-09-01 至 2026-09-30</dd></div><div><dt>关注主题</dt><dd>产品发布与业务合作</dd></div></dl><ul class="sample-sources"><li><span>产品发布与合作资料</span><span>2 条</span></li><li><span>发布时间未知</span><span>1 条</span></li><li><span>范围外或无正文</span><span>2 条</span></li></ul><button id="load-demo" class="button secondary">载入示例任务</button><p class="small muted sample-note">5 条自主编写的虚构资料，仅用于交互体验。</p></section>
-          <section class="capability-note"><h2>本轮支持</h2><p>手动录入来源与原文，逐条审核后生成简报。自动搜索和网页读取尚未接入。</p></section>
-        </aside>
       </div>
     </section>
     <section id="view-collect" class="view" hidden aria-labelledby="collect-heading">
@@ -72,6 +69,12 @@
     </section>
     <footer class="page-footer"><span>当前任务仅保存在此浏览器</span><span id="model-status" role="status">正在检查模型配置…</span></footer>
   </main>
+  <aside id="demo-sidebar" class="demo-sidebar" aria-labelledby="demo-sidebar-title" hidden>
+    <div class="sidebar-heading"><h2 id="demo-sidebar-title">示例体验</h2><button id="close-demo-sidebar" class="icon-button" aria-label="关闭示例侧栏"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <section class="sample-section"><p>无需配置服务，先试一次资料审核与简报导出。</p><div class="sample-company"><strong>示例科技</strong><span class="tag">虚构公司</span></div><dl class="sample-scope"><div><dt>研究时间</dt><dd>2026-09-01 至 2026-09-30</dd></div><div><dt>关注主题</dt><dd>产品发布与业务合作</dd></div></dl><ul class="sample-sources"><li><span>产品发布与合作资料</span><span>2 条</span></li><li><span>发布时间未知</span><span>1 条</span></li><li><span>范围外或无正文</span><span>2 条</span></li></ul><button id="load-demo" class="button secondary">载入示例任务</button><p class="small muted sample-note">5 条自主编写的虚构资料，仅用于交互体验。载入会替换当前任务。</p></section>
+    <section class="capability-note"><h2>本轮支持</h2><p>手动录入来源与原文，逐条审核后生成简报。自动搜索和网页读取尚未接入。</p></section>
+  </aside>
+  </div>
   <dialog id="source-dialog" class="source-dialog" aria-labelledby="source-dialog-title"><form id="source-form" novalidate><div class="dialog-heading"><h2 id="source-dialog-title">录入研究资料</h2><button type="button" class="icon-button" data-close-dialog aria-label="关闭录入窗口"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><p class="muted">请录入有权使用的公开资料，保留便于核查的原文。</p><div class="field"><label for="source-title">资料标题 <span class="required">*</span></label><input id="source-title" name="title" maxlength="200" required></div><div class="field"><label for="source-url">原文链接 <span class="required">*</span></label><input id="source-url" name="url" type="url" maxlength="2048" placeholder="https://" required></div><div class="two-fields"><div class="field"><label for="source-publisher">来源名称</label><input id="source-publisher" name="publisher" maxlength="120" placeholder="例如：公司官网"></div><div class="field"><label for="source-date">发布时间</label><input id="source-date" name="date" type="date"><span class="field-help">无法确认时留空</span></div></div><div class="field"><label for="source-text">保存文本 <span class="required">*</span></label><textarea id="source-text" name="text" rows="6" maxlength="12000" placeholder="粘贴需要研究的原文片段，最多 12000 字" required></textarea></div><p id="source-error" class="field-error" role="alert"></p><div class="dialog-actions"><button type="button" class="button secondary" data-close-dialog>取消</button><button class="button primary" type="submit">保存资料</button></div></form></dialog>
   <dialog id="confirm-dialog" class="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title">替换当前任务？</h2><p id="confirm-description"></p><div class="dialog-actions"><button id="confirm-cancel" class="button secondary">取消</button><button id="confirm-accept" class="button primary">确认替换</button></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>

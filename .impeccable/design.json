@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-28T04:05:52.686207+00:00",
+  "generatedAt": "2026-10-29T03:49:22.964398+00:00",
   "title": "Design System: 企业情报研究助手",
   "extensions": {
     "colorMeta": {
@@ -260,7 +260,7 @@
     "typographyMeta": {
       "headline": {
         "displayName": "页面主标题",
-        "purpose": "当前页面名称；700px 以下缩至 22px。"
+        "purpose": "当前桌面页面名称。"
       },
       "title": {
         "displayName": "区块标题",
@@ -312,24 +312,12 @@
         "purpose": "系统偏好减少动态时取消过渡。"
       }
     ],
-    "breakpoints": [
-      {
-        "name": "compact-desktop",
-        "value": "1100px"
-      },
-      {
-        "name": "tablet",
-        "value": "850px"
-      },
-      {
-        "name": "stacked",
-        "value": "700px"
-      },
-      {
-        "name": "small-phone",
-        "value": "460px"
-      }
-    ]
+    "breakpoints": [],
+    "desktopViewport": {
+      "minimumWidth": "1120px",
+      "sidebarWidth": "336px",
+      "note": "仅桌面布局，无手机专用断点；示例侧栏默认收起。"
+    }
   },
   "components": [
     {
@@ -338,7 +326,7 @@
       "refersTo": "button-primary",
       "description": "创建、生成等当前主要操作。",
       "html": "<button class=\"ds-primary\" type=\"button\">创建研究任务</button>",
-      "css": ".ds-primary{font-family:var(--font-ui,\"Segoe UI\",\"Microsoft YaHei\",sans-serif);font-size:14px;font-weight:500;line-height:1.65;border:1px solid transparent;border-radius:var(--radius-control,6px);min-height:42px;padding:9px 17px;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:background-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1)),border-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1));background:var(--color-primary,#173c55);color:var(--color-surface,#fff)}.ds-primary:hover:not(:disabled){background:var(--color-primary-hover,#0e2e44)}.ds-primary:active:not(:disabled){background:#0b2638}.ds-primary:focus-visible{outline:2px solid var(--color-focus,#29678e);outline-offset:3px;}.ds-primary:disabled{opacity:.55;cursor:not-allowed}@media(max-width:700px){.ds-primary{min-height:44px}}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none!important}}"
+      "css": ".ds-primary{font-family:var(--font-ui,\"Segoe UI\",\"Microsoft YaHei\",sans-serif);font-size:14px;font-weight:500;line-height:1.65;border:1px solid transparent;border-radius:var(--radius-control,6px);min-height:42px;padding:9px 17px;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:background-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1)),border-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1));background:var(--color-primary,#173c55);color:var(--color-surface,#fff)}.ds-primary:hover:not(:disabled){background:var(--color-primary-hover,#0e2e44)}.ds-primary:active:not(:disabled){background:#0b2638}.ds-primary:focus-visible{outline:2px solid var(--color-focus,#29678e);outline-offset:3px;}.ds-primary:disabled{opacity:.55;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none!important}}"
     },
     {
       "name": "次要按钮",
@@ -346,7 +334,7 @@
       "refersTo": "button-secondary",
       "description": "返回、导出或并列次要操作。",
       "html": "<button class=\"ds-secondary\" type=\"button\">返回审核</button>",
-      "css": ".ds-secondary{font-family:var(--font-ui,\"Segoe UI\",\"Microsoft YaHei\",sans-serif);font-size:14px;font-weight:500;line-height:1.65;border:1px solid transparent;border-radius:var(--radius-control,6px);min-height:42px;padding:9px 17px;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:background-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1)),border-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1));background:var(--color-surface,#fff);color:#334e60;border-color:#aabfcd}.ds-secondary:hover:not(:disabled){background:#edf3f7}.ds-secondary:active:not(:disabled){background:#dce8ef}.ds-secondary:focus-visible{outline:2px solid var(--color-focus,#29678e);outline-offset:3px;}.ds-secondary:disabled{opacity:.55;cursor:not-allowed}@media(max-width:700px){.ds-secondary{min-height:44px}}@media(prefers-reduced-motion:reduce){.ds-secondary{transition:none!important}}"
+      "css": ".ds-secondary{font-family:var(--font-ui,\"Segoe UI\",\"Microsoft YaHei\",sans-serif);font-size:14px;font-weight:500;line-height:1.65;border:1px solid transparent;border-radius:var(--radius-control,6px);min-height:42px;padding:9px 17px;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:background-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1)),border-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1));background:var(--color-surface,#fff);color:#334e60;border-color:#aabfcd}.ds-secondary:hover:not(:disabled){background:#edf3f7}.ds-secondary:active:not(:disabled){background:#dce8ef}.ds-secondary:focus-visible{outline:2px solid var(--color-focus,#29678e);outline-offset:3px;}.ds-secondary:disabled{opacity:.55;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-secondary{transition:none!important}}"
     },
     {
       "name": "纳入按钮",
@@ -354,7 +342,7 @@
       "refersTo": "button-include",
       "description": "将有正文的来源纳入简报。",
       "html": "<button class=\"ds-include\" type=\"button\"><svg class=\"ds-check\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m5 12 4 4L19 6\"/></svg>纳入简报</button>",
-      "css": ".ds-include{font-family:var(--font-ui,\"Segoe UI\",\"Microsoft YaHei\",sans-serif);font-size:14px;font-weight:500;line-height:1.65;border:1px solid transparent;border-radius:var(--radius-control,6px);min-height:42px;padding:9px 17px;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:background-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1)),border-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1));background:var(--color-success,#176f60);color:#fff}.ds-include:hover:not(:disabled){background:#105447}.ds-include:focus-visible{outline:2px solid var(--color-focus,#29678e);outline-offset:3px;}.ds-include:disabled{opacity:.55;cursor:not-allowed}.ds-check{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}@media(max-width:700px){.ds-include{min-height:44px}}@media(prefers-reduced-motion:reduce){.ds-check,.ds-include{transition:none!important}}"
+      "css": ".ds-include{font-family:var(--font-ui,\"Segoe UI\",\"Microsoft YaHei\",sans-serif);font-size:14px;font-weight:500;line-height:1.65;border:1px solid transparent;border-radius:var(--radius-control,6px);min-height:42px;padding:9px 17px;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:background-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1)),border-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1));background:var(--color-success,#176f60);color:#fff}.ds-include:hover:not(:disabled){background:#105447}.ds-include:focus-visible{outline:2px solid var(--color-focus,#29678e);outline-offset:3px;}.ds-include:disabled{opacity:.55;cursor:not-allowed}.ds-check{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}@media(prefers-reduced-motion:reduce){.ds-check,.ds-include{transition:none!important}}"
     },
     {
       "name": "文字操作",
@@ -378,7 +366,7 @@
       "refersTo": "step-navigation",
       "description": "当前步骤同时使用文字、底线与实心编号。",
       "html": "<nav class=\"ds-steps\" aria-label=\"研究流程\"><button class=\"ds-step\" type=\"button\"><span class=\"ds-number\">1</span><span>定义研究<small class=\"ds-stephelp\">公司、时间与主题</small></span></button><button class=\"ds-step\" type=\"button\"><span class=\"ds-number\">2</span><span>收集资料<small class=\"ds-stephelp\">录入链接与正文</small></span></button><button class=\"ds-step ds-current\" type=\"button\" aria-current=\"step\"><span class=\"ds-number\">3</span><span>审核资料<small class=\"ds-stephelp\">核查并选择来源</small></span></button><button class=\"ds-step\" type=\"button\"><span class=\"ds-number\">4</span><span>研究简报<small class=\"ds-stephelp\">整理与导出</small></span></button></nav>",
-      "css": ".ds-steps{display:grid;grid-template-columns:repeat(4,1fr);column-gap:40px;background:var(--color-surface,#fff);border-bottom:1px solid var(--color-border,#cbd8e0)}.ds-step{font-family:var(--font-ui,\"Segoe UI\",\"Microsoft YaHei\",sans-serif);font-size:14px;line-height:1.65;display:flex;align-items:center;gap:12px;text-align:left;border:0;border-bottom:3px solid transparent;min-height:84px;padding:16px 5px;color:var(--color-muted,#536a79);background:none;cursor:pointer;transition:background-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1)),border-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1));}.ds-number{display:grid;place-content:center;flex-shrink:0;width:29px;height:29px;border-radius:50%;border:1px solid #a6bac8;font-size:13px;font-variant-numeric:tabular-nums}.ds-stephelp{display:block;font-size:12px;margin-top:2px;font-weight:400}.ds-current{border-bottom-color:var(--color-primary,#173c55);color:var(--color-primary,#173c55);font-weight:600}.ds-current .ds-number{background:var(--color-primary,#173c55);color:#fff;border-color:var(--color-primary,#173c55)}.ds-step:hover:not(:disabled){background:var(--color-surface-subtle,#f7f9fb)}.ds-step:focus-visible{outline:2px solid var(--color-focus,#29678e);outline-offset:3px;outline-offset:-5px}.ds-step:disabled{color:#667985;cursor:not-allowed}.ds-step:disabled .ds-number{border-style:dashed}@media(max-width:700px){.ds-steps{column-gap:8px}.ds-step{font-size:13px;min-height:68px;padding:13px 1px;gap:7px;justify-content:center}.ds-stephelp{display:none}.ds-number{width:23px;height:23px;font-size:12px}}@media(max-width:460px){.ds-step{gap:5px;font-size:12px}.ds-number{width:21px;height:21px}}@media(prefers-reduced-motion:reduce){.ds-number,.ds-step,.ds-stephelp,.ds-steps{transition:none!important}}"
+      "css": ".ds-steps{display:grid;grid-template-columns:repeat(4,1fr);column-gap:40px;background:var(--color-surface,#fff);border-bottom:1px solid var(--color-border,#cbd8e0)}.ds-step{font-family:var(--font-ui,\"Segoe UI\",\"Microsoft YaHei\",sans-serif);font-size:14px;line-height:1.65;display:flex;align-items:center;gap:12px;text-align:left;border:0;border-bottom:3px solid transparent;min-height:84px;padding:16px 5px;color:var(--color-muted,#536a79);background:none;cursor:pointer;transition:background-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1)),border-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1));}.ds-number{display:grid;place-content:center;flex-shrink:0;width:29px;height:29px;border-radius:50%;border:1px solid #a6bac8;font-size:13px;font-variant-numeric:tabular-nums}.ds-stephelp{display:block;font-size:12px;margin-top:2px;font-weight:400}.ds-current{border-bottom-color:var(--color-primary,#173c55);color:var(--color-primary,#173c55);font-weight:600}.ds-current .ds-number{background:var(--color-primary,#173c55);color:#fff;border-color:var(--color-primary,#173c55)}.ds-step:hover:not(:disabled){background:var(--color-surface-subtle,#f7f9fb)}.ds-step:focus-visible{outline:2px solid var(--color-focus,#29678e);outline-offset:3px;outline-offset:-5px}.ds-step:disabled{color:#667985;cursor:not-allowed}.ds-step:disabled .ds-number{border-style:dashed}@media(prefers-reduced-motion:reduce){.ds-number,.ds-step,.ds-stephelp,.ds-steps{transition:none!important}}"
     },
     {
       "name": "状态标签",
@@ -410,7 +398,7 @@
       "refersTo": "panel",
       "description": "抬升的白色确认面与底部操作区；示例仅展示外观。",
       "html": "<section class=\"ds-dialog\" role=\"dialog\" aria-labelledby=\"ds-dialogtitle\"><h2 class=\"ds-dialogtitle\" id=\"ds-dialogtitle\">替换当前任务？</h2><p class=\"ds-dialogtext\">当前任务和资料将被替换。需要保留的内容请先导出。</p><div class=\"ds-dialogactions\"><button class=\"ds-cancel\" type=\"button\">取消</button><button class=\"ds-confirm\" type=\"button\">确认替换</button></div></section>",
-      "css": ".ds-dialog{font-family:var(--font-ui,\"Segoe UI\",\"Microsoft YaHei\",sans-serif);color:var(--color-ink,#22333e);background:var(--color-surface,#fff);border:0;border-radius:var(--radius-panel,12px);box-shadow:var(--shadow-dialog,0 18px 60px rgb(21 45 62 / 22%));padding:28px;max-width:430px}.ds-dialogtitle{font-size:20px;font-weight:600;line-height:1.6;margin:0}.ds-dialogtext{font-size:14px;line-height:1.65;color:var(--color-muted,#536a79);margin:13px 0 23px}.ds-dialogactions{display:flex;justify-content:flex-end;gap:12px;border-top:1px solid var(--color-divider,#e0e7ed);margin-top:22px;padding-top:19px}.ds-cancel,.ds-confirm{font-family:var(--font-ui,\"Segoe UI\",\"Microsoft YaHei\",sans-serif);font-size:14px;font-weight:500;line-height:1.65;border:1px solid transparent;border-radius:var(--radius-control,6px);min-height:42px;padding:9px 17px;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:background-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1)),border-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1));}.ds-confirm{background:var(--color-primary,#173c55);color:#fff}.ds-confirm:hover{background:var(--color-primary-hover,#0e2e44)}.ds-confirm:active{background:#0b2638}.ds-cancel{color:#334e60;border-color:#aabfcd;background:#fff}.ds-cancel:hover{background:#edf3f7}.ds-cancel:active{background:#dce8ef}.ds-cancel:focus-visible,.ds-confirm:focus-visible{outline:2px solid var(--color-focus,#29678e);outline-offset:3px;}@media(max-width:460px){.ds-dialog{padding:22px}}@media(prefers-reduced-motion:reduce){.ds-cancel,.ds-confirm,.ds-dialog,.ds-dialogactions,.ds-dialogtext,.ds-dialogtitle{transition:none!important}}"
+      "css": ".ds-dialog{font-family:var(--font-ui,\"Segoe UI\",\"Microsoft YaHei\",sans-serif);color:var(--color-ink,#22333e);background:var(--color-surface,#fff);border:0;border-radius:var(--radius-panel,12px);box-shadow:var(--shadow-dialog,0 18px 60px rgb(21 45 62 / 22%));padding:28px;max-width:430px}.ds-dialogtitle{font-size:20px;font-weight:600;line-height:1.6;margin:0}.ds-dialogtext{font-size:14px;line-height:1.65;color:var(--color-muted,#536a79);margin:13px 0 23px}.ds-dialogactions{display:flex;justify-content:flex-end;gap:12px;border-top:1px solid var(--color-divider,#e0e7ed);margin-top:22px;padding-top:19px}.ds-cancel,.ds-confirm{font-family:var(--font-ui,\"Segoe UI\",\"Microsoft YaHei\",sans-serif);font-size:14px;font-weight:500;line-height:1.65;border:1px solid transparent;border-radius:var(--radius-control,6px);min-height:42px;padding:9px 17px;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:background-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1)),border-color var(--duration,160ms) var(--ease,cubic-bezier(.2,.8,.2,1));}.ds-confirm{background:var(--color-primary,#173c55);color:#fff}.ds-confirm:hover{background:var(--color-primary-hover,#0e2e44)}.ds-confirm:active{background:#0b2638}.ds-cancel{color:#334e60;border-color:#aabfcd;background:#fff}.ds-cancel:hover{background:#edf3f7}.ds-cancel:active{background:#dce8ef}.ds-cancel:focus-visible,.ds-confirm:focus-visible{outline:2px solid var(--color-focus,#29678e);outline-offset:3px;}@media(prefers-reduced-motion:reduce){.ds-cancel,.ds-confirm,.ds-dialog,.ds-dialogactions,.ds-dialogtext,.ds-dialogtitle{transition:none!important}}"
     }
   ],
   "narrative": {
@@ -443,7 +431,7 @@
     "dos": [
       "**Do** 用文字与颜色共同标明审核状态，保持资料编号、详情与引用的对应。",
       "**Do** 沿用当前根变量和组件圆角、间距，新增区域先使用文字与分隔线建立层级。",
-      "**Do** 保留键盘焦点、可折行内容和窄屏正文定位行为。",
+      "**Do** 保留键盘焦点、可折行内容与桌面双栏核查布局。",
       "**Do** 为长篇保存文本与简报保留阅读行长和宽松行距。"
     ],
     "donts": [
