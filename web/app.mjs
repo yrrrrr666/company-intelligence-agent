@@ -191,11 +191,17 @@ function reviewSource(id, status) {
   toast(`${reviewLabel(source)}：${source.title}`);
 }
 
+function updateReportHint() {
+  const count = eligibleSources(state.sources).length;
+  const modeHint = $('#report-mode').value === 'deepseek' ? '点击生成后会将纳入正文发送至 DeepSeek API，可能产生服务费用。' : '规则摘录不调用模型。';
+  $('#report-hint').textContent = count ? `当前纳入 ${count} 条有正文的资料。${modeHint}` : '没有已纳入的可用正文，请返回审核并选择资料。';
+}
+
 function renderReport() {
   const report = state.report;
   $('#export-report').disabled = !report;
   $('#generate-report').disabled = !!requestController || !eligibleSources(state.sources).length;
-  $('#report-hint').textContent = eligibleSources(state.sources).length ? `当前纳入 ${eligibleSources(state.sources).length} 条有正文的资料。规则摘录不调用模型。` : '没有已纳入的可用正文，请返回审核并选择资料。';
+  updateReportHint();
   if (!report) {
     $('#report-body').innerHTML = '<div class="empty-state"><svg class="empty-icon" aria-hidden="true"><use href="#i-file"/></svg><h2>尚未生成简报</h2><p>先纳入有正文的资料，再选择整理方式。<br>审核选择变更后，需要重新生成简报。</p></div>';
     return;
@@ -421,9 +427,7 @@ $('#source-form').addEventListener('submit', event => {
   toast('资料已保存，等待人工审核');
 });
 
-$('#report-mode').addEventListener('change', () => {
-  $('#report-hint').textContent = $('#report-mode').value === 'deepseek' ? '点击生成后，将把已纳入的资料正文发送至 DeepSeek API，可能产生服务费用。' : '规则摘录保留来源文本，不调用模型。';
-});
+$('#report-mode').addEventListener('change', updateReportHint);
 
 $('#generate-report').addEventListener('click', async () => {
   $('#report-error').textContent = '';
