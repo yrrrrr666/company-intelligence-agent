@@ -1,6 +1,6 @@
 {
   "name": "company-intelligence-assistant",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "企业情报研究助手：本地资料审核与可追溯简报原型",

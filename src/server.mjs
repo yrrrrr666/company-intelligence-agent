@@ -2,7 +2,8 @@ import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { validateTask, validateSources, eligibleSources, validateModelClaims } from '../web/core.mjs';
+import { validateTask, validateSources, eligibleSources, validateModelClaims, publicWebUrl, researchQuery } from '../web/core.mjs';
+import { searchWeb, readWebPage, ResearchError, SEARCH_LIMIT } from './web-research.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 if (existsSync(path.join(root, '.env'))) {
@@ -13,7 +14,7 @@ const port = Number(process.env.PORT || 4173);
 const key = process.env.DEEPSEEK_API_KEY?.trim();
 const model = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
-const publicFiles = new Set(['index.html', 'styles.css', 'app.mjs', 'core.mjs', 'import.mjs', 'favicon.svg']);
+const publicFiles = new Set(['index.html', 'styles.css', 'app.mjs', 'core.mjs', 'import.mjs', 'research.mjs', 'favicon.svg']);
 const pdfRoot = path.join(root, 'node_modules', 'pdfjs-dist');
 
 function pdfAsset(name) {
@@ -38,6 +39,7 @@ async function readJson(req) {
 }
 
 let modelBusy = false;
+let researchBusy = 0;
 export const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
@@ -48,7 +50,36 @@ export const server = http.createServer(async (req, res) => {
   let pathname;
   try { pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname); }
   catch { return json(res, 400, { error: '地址无效' }); }
-  if (pathname === '/api/config' && req.method === 'GET') return json(res, 200, { modelAvailable: !!key, model: key ? model : null, searchAvailable: false });
+  if (pathname === '/api/config' && req.method === 'GET') return json(res, 200, { modelAvailable: !!key, model: key ? model : null, searchAvailable: !!key, readerAvailable: !!key, searchLimit: SEARCH_LIMIT });
+  if (['/api/search', '/api/read'].includes(pathname) && req.method === 'POST') {
+    if (req.headers.origin !== `http://${req.headers.host}`) return json(res, 403, { error: '请求来源无效' });
+    if (!key) return json(res, 503, { error: '尚未配置 DeepSeek API Key，请在本地 .env 配置后重启服务。' });
+    if (researchBusy >= 2) return json(res, 429, { error: '已有资料收集请求正在处理，请稍后重试。' });
+    let input;
+    try { input = await readJson(req); }
+    catch { return json(res, 400, { error: '请求格式无效，请检查后重试。' }); }
+    let query;
+    if (pathname === '/api/search') {
+      if (Object.keys(validateTask(input?.task || {})).length) return json(res, 400, { error: '研究范围无效，请先创建研究任务。' });
+      query = input.query === undefined ? researchQuery(input.task) : input.query;
+      if (typeof query !== 'string' || !query.trim() || [...query].length > 128) return json(res, 400, { error: '检索词须为 1–128 个字符。' });
+    } else if (!publicWebUrl(input?.url)) return json(res, 400, { error: '请使用公开网站地址；不支持本机、内网、IP 地址或带登录信息的链接。' });
+    // Recheck after awaiting the request body: simultaneous uploads can pass the earlier guard.
+    if (researchBusy >= 2) return json(res, 429, { error: '已有资料收集请求正在处理，请稍后重试。' });
+    researchBusy++;
+    const controller = new AbortController();
+    res.once('close', () => { if (!res.writableEnded) controller.abort(); });
+    try {
+      const options = { key, signal: controller.signal };
+      const result = pathname === '/api/search' ? { query: query.trim(), candidates: await searchWeb(query.trim(), options) } : await readWebPage(input.url, options);
+      if (res.destroyed || controller.signal.aborted) return;
+      return json(res, 200, result);
+    } catch (error) {
+      if (res.destroyed) return;
+      const timeout = error.name === 'TimeoutError';
+      return json(res, 502, { code: error instanceof ResearchError ? error.code : timeout ? 'WEB_TIMEOUT' : 'WEB_CONNECTION_FAILED', error: error instanceof ResearchError ? error.message : timeout ? '资料服务请求超时，已完成结果仍保留，可重试。' : '无法连接资料服务，已完成结果仍保留，请稍后重试。' });
+    } finally { researchBusy--; }
+  }
   if (pathname === '/api/report' && req.method === 'POST') {
     if (req.headers.origin !== `http://${req.headers.host}`) return json(res, 403, { error: '请求来源无效' });
     if (!key) return json(res, 503, { error: '尚未配置 DeepSeek API Key，请使用规则摘录或在本地 .env 中配置' });

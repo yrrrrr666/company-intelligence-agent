@@ -1,5 +1,6 @@
-import { STORAGE_KEY, MAX_SOURCES, validateTask, isDate, safeUrl, sourceIssues, eligibleSources, validateSources, validateModelClaims, createReport, reportMarkdown, demoWorkspace, localFileLabel } from './core.mjs';
+import { STORAGE_KEY, MAX_SOURCES, validateTask, isDate, safeUrl, sourceIssues, eligibleSources, validateSources, validateModelClaims, createReport, reportMarkdown, demoWorkspace, localFileLabel, publicWebUrl, normalizeUrl, researchQuery, claimSourceWarnings } from './core.mjs';
 import { checkLocalFile, openLocalFile, extractLocalText, validatePageRange, MAX_PDF_PAGES } from './import.mjs';
+import { mergeSearchCandidates, saveWebText } from './research.mjs';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -23,6 +24,8 @@ let fileGeneration = 0;
 let fileBusy = false;
 let fileMode = false;
 let rangeDirty = false;
+let searchAvailable = false;
+let collectionController = null;
 
 function toast(message) {
   $('#toast').textContent = message;
@@ -61,6 +64,7 @@ function confirmAction(title, description, action, accept = '确认替换') {
 }
 
 function replaceWorkspace(next, step) {
+  stopCollection(false);
   invalidateReport();
   state = next;
   selectedId = state.sources[0]?.id || null;
@@ -110,6 +114,12 @@ function go(step) {
 
 function renderCollection() {
   const task = state.task;
+  if ($('#search-query').dataset.taskId !== task.id) {
+    $('#search-query').value = researchQuery(task);
+    $('#search-query').dataset.taskId = task.id;
+    $('#collection-progress').textContent = '等待收集资料。';
+    $('#collection-error').textContent = '';
+  }
   const queries = [`"${task.company}" ${task.topic}`, `"${task.company}" 公告 ${task.start} ${task.end}`, `"${task.company}" ${task.topic} 官方`];
   $('#queries').innerHTML = queries.map((query, index) => `<div class="query-row"><code>${escape(query)}</code><button class="copy-query" data-copy-query="${index}" aria-label="复制第 ${index + 1} 条检索词">复制</button></div>`).join('');
   $$('[data-copy-query]').forEach(button => button.addEventListener('click', async () => {
@@ -119,9 +129,137 @@ function renderCollection() {
   $('#collect-count').innerHTML = `${state.sources.length} <small>条资料</small>`;
   $('#collect-summary').textContent = `${state.sources.filter(source => source.access === 'available' && source.text.trim()).length} 条有保存文本，${state.sources.filter(source => source.access !== 'available').length} 条无可用正文。`;
   $('#source-count').textContent = `共 ${state.sources.length} 条 / 上限 ${MAX_SOURCES} 条`;
-  $('#collection-list').innerHTML = state.sources.length ? state.sources.map(source => `<div class="collection-row"><div><strong>${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')}，${escape(source.date || '发布时间未知')}，${source.access === 'available' ? (source.file ? '本地导入文本' : '已保存文本') : '无可用正文'}${source.demo ? '（虚构演示）' : ''}</p></div><button class="link-button" data-open-source="${escape(source.id)}">查看资料</button></div>`).join('') : '<div class="empty-state"><svg class="empty-icon" aria-hidden="true"><use href="#i-file"/></svg><h2>还没有研究资料</h2><p>录入资料或导入本地文件，再进入人工审核。</p><button class="button secondary" data-action="add-source">录入第一条资料</button></div>';
+  $('#collection-list').innerHTML = state.sources.length ? state.sources.map(source => `<div class="collection-row"><div><strong>${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')}，${escape(source.date || '发布时间未知')}，${source.web ? ({ pending: '等待读取正文', available: '网页正文已保存', failed: '正文读取失败' })[source.web.status] : source.access === 'available' ? (source.file ? '本地导入文本' : '已保存文本') : '无可用正文'}${source.demo ? '（虚构演示）' : ''}</p>${source.web?.error ? `<p class="collection-read-error">${escape(source.web.error)}</p>` : ''}</div><div class="collection-row-actions">${source.web && source.web.status !== 'available' ? `<button class="link-button" data-read-source="${escape(source.id)}" ${collectionController || !searchAvailable ? 'disabled' : ''}>${source.web.status === 'failed' ? '重试读取' : '读取正文'}</button>` : ''}<button class="link-button" data-open-source="${escape(source.id)}">查看资料</button></div></div>`).join('') : '<div class="empty-state"><svg class="empty-icon" aria-hidden="true"><use href="#i-file"/></svg><h2>还没有研究资料</h2><p>搜索公开资料、读取网页，或导入本地文件，再进入人工审核。</p><button class="button secondary" data-action="add-source">录入第一条资料</button></div>';
   $$('[data-open-source]').forEach(button => button.addEventListener('click', () => { selectedId = button.dataset.openSource; filter = 'all'; go('review'); }));
+  bindReadButtons();
+  updateResearchControls();
 }
+
+function updateResearchControls() {
+  const busy = !!collectionController;
+  $('#search-web').disabled = busy || !searchAvailable || state.sources.length >= MAX_SOURCES;
+  $('#read-url-button').disabled = busy || !searchAvailable;
+  $('#read-pending').disabled = busy || !searchAvailable || !state.sources.some(source => source.web && source.web.status !== 'available' && source.review !== 'excluded');
+  $('#search-query').disabled = busy;
+  $('#read-url').disabled = busy;
+  $('#stop-collection').hidden = !busy;
+  $('#research-availability').textContent = searchAvailable ? 'DeepSeek Search / Fetch 已配置' : '需配置 DeepSeek 后使用';
+  $$('[data-read-source]').forEach(button => { button.disabled = busy || !searchAvailable; });
+}
+
+function stopCollection(announce = true) {
+  collectionController?.abort();
+  collectionController = null;
+  if (announce) $('#collection-progress').textContent = '已停止收集，已完成结果仍保留；未读取的资料可继续读取。';
+  updateResearchControls();
+}
+
+function collectionChanged() {
+  invalidateReport();
+  persist();
+  if (currentStep === 'collect') renderCollection();
+  else if (currentStep === 'review') renderReview();
+  else if (currentStep === 'report') renderReport();
+}
+
+async function researchPost(route, body, signal) {
+  const response = await fetch(route, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || '资料服务不可用，请重试。');
+  return payload;
+}
+
+async function readSources(ids, controller, active, prefix = '') {
+  let succeeded = 0;
+  let failed = 0;
+  for (const [index, id] of ids.entries()) {
+    if (!active()) return;
+    const source = state.sources.find(item => item.id === id);
+    if (!source?.web || source.web.status === 'available') continue;
+    $('#collection-progress').textContent = `${prefix}正在读取 ${index + 1}/${ids.length}：${source.title}`;
+    try {
+      const page = await researchPost('/api/read', { url: source.url }, controller.signal);
+      if (!active()) return;
+      const position = state.sources.findIndex(item => item.id === id);
+      state.sources[position] = saveWebText(state.sources[position], page);
+      succeeded++;
+    } catch (error) {
+      if (!active() || controller.signal.aborted) return;
+      const current = state.sources.find(item => item.id === id);
+      current.web.status = 'failed';
+      current.web.error = (error.message || '正文读取失败，可重试。').slice(0, 500);
+      failed++;
+    }
+    collectionChanged();
+  }
+  if (active()) $('#collection-progress').textContent = `${prefix}读取完成：${succeeded} 条成功，${failed} 条失败。候选资料均需审核后纳入简报。`;
+}
+
+async function runCollection(work) {
+  if (collectionController || !state.task || !searchAvailable) return;
+  const controller = new AbortController();
+  const taskId = state.task.id;
+  collectionController = controller;
+  const active = () => collectionController === controller && state.task?.id === taskId;
+  $('#collection-error').textContent = '';
+  updateResearchControls();
+  try { await work(controller, active); }
+  catch (error) {
+    if (active() && !controller.signal.aborted) {
+      $('#collection-error').textContent = error.message || '资料收集失败，请重试。';
+      $('#collection-progress').textContent = '收集未完成，已有资料和审核选择仍保留。';
+    }
+  } finally {
+    if (active()) {
+      collectionController = null;
+      updateResearchControls();
+    }
+  }
+}
+
+function bindReadButtons() {
+  $$('[data-read-source]').forEach(button => button.addEventListener('click', () => runCollection((controller, active) => readSources([button.dataset.readSource], controller, active))));
+}
+
+$('#search-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const query = $('#search-query').value.trim();
+  if (!query || [...query].length > 128) { $('#collection-error').textContent = '检索词须为 1–128 个字符。'; return; }
+  void runCollection(async (controller, active) => {
+    $('#collection-progress').textContent = '正在搜索公开资料…';
+    const result = await researchPost('/api/search', { task: state.task, query }, controller.signal);
+    if (!active()) return;
+    const merged = mergeSearchCandidates(state.sources, result.candidates, result.query);
+    if (!merged.added.length) {
+      $('#collection-progress').textContent = result.candidates.length ? `未新增资料：跳过 ${merged.duplicates} 条重复链接，${merged.omitted} 条无效或超限候选。原资料未改动，可调整检索词。` : '未找到候选资料，可调整检索词或导入本地文件。';
+      return;
+    }
+    state.sources = merged.sources;
+    const prefix = `新增 ${merged.added.length} 条候选，跳过 ${merged.duplicates} 条重复、${merged.omitted} 条无效或超限结果。`;
+    collectionChanged();
+    await readSources(merged.added.map(source => source.id), controller, active, prefix);
+  });
+});
+
+$('#read-url-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const url = publicWebUrl($('#read-url').value.trim());
+  if (!url) { $('#collection-error').textContent = '请填写公开网站地址，不支持本机、内网、IP 或带登录信息的链接。'; return; }
+  void runCollection(async (controller, active) => {
+    let source = state.sources.find(item => normalizeUrl(item.url) === normalizeUrl(url));
+    if (source && (!source.web || source.web.status === 'available')) { $('#collection-progress').textContent = '此链接已有保存文本，原资料未改动，请在审核页查看。'; return; }
+    if (!source) {
+      const merged = mergeSearchCandidates(state.sources, [{ url }]);
+      if (!merged.added.length) throw new Error('资料数量已达上限，请继续审核已有资料。');
+      state.sources = merged.sources;
+      source = merged.added[0];
+      collectionChanged();
+    }
+    await readSources([source.id], controller, active);
+  });
+});
+$('#read-pending').addEventListener('click', () => runCollection((controller, active) => readSources(state.sources.filter(source => source.web && source.web.status !== 'available' && source.review !== 'excluded').slice(0, 5).map(source => source.id), controller, active)));
+$('#stop-collection').addEventListener('click', () => stopCollection());
 
 function reviewLabel(source) { return ({ pending: '待审核', included: '已纳入', excluded: '已排除' })[source.review]; }
 function needsCheck(source) { return sourceIssues(source, state.task, state.sources).some(issue => issue !== '虚构演示资料'); }
@@ -162,17 +300,31 @@ function renderDetail() {
     return;
   }
   const issues = sourceIssues(source, state.task, state.sources);
+  const accessDescription = source.web ? ({ pending: '候选链接，尚未读取正文', available: 'DeepSeek Fetch 读取的网页正文', failed: '网页读取失败，可重试' })[source.web.status] : source.access === 'available' ? (source.file ? '本地文件文本，可经人工编辑' : '已录入文本，未联网读取') : '无可用正文';
+  const webInfo = source.web ? `<div class="web-provenance"><p>正文服务：DeepSeek Fetch · 读取时间：${source.web.fetchedAt ? escape(new Date(source.web.fetchedAt).toLocaleString('zh-CN', { hour12: false })) : '尚未读取'}</p><p>保存 ${source.text.length} 字 / 提取 ${source.web.originalChars} 字${source.web.truncated ? '，正文已截取' : ''}；日期${source.web.dateOrigin === 'reviewed' ? '已人工确认' : source.web.dateOrigin === 'search' ? '由搜索服务提供，待核实' : '未知'}</p>${source.web.error ? `<p class="field-error">${escape(source.web.error)}</p>` : ''}${source.web.status !== 'available' ? `<button class="button secondary" data-read-source="${escape(source.id)}" ${collectionController || !searchAvailable ? 'disabled' : ''}>${source.web.status === 'failed' ? '重试读取' : '读取正文'}</button>` : ''}${source.web.snippet ? `<details><summary>搜索摘要（非正文，不用于简报）</summary><p>${escape(source.web.snippet)}</p></details>` : ''}</div>` : '';
+  const metadataForm = `<details class="source-metadata"><summary>核实来源信息与备注</summary><form id="metadata-form" novalidate><div class="field"><label for="review-publisher">来源名称</label><input id="review-publisher" name="publisher" maxlength="120" value="${escape(source.publisher)}"></div><div class="field"><label for="review-date">资料发布日期</label><input id="review-date" name="date" type="date" value="${escape(source.date)}"><span class="field-help">请核对原文。无法确认时留空，不以采集时间代替。</span></div><div class="field"><label for="review-note">核查备注</label><textarea id="review-note" name="note" rows="2" maxlength="500" placeholder="记录口径差异、缺失信息或核查依据">${escape(source.note)}</textarea></div><p id="metadata-error" class="field-error" role="alert"></p><button class="button secondary" type="submit">确认并保存来源信息</button></form></details>`;
   $('#source-detail').innerHTML = `<div class="detail-top"><span>资料 ${state.sources.indexOf(source) + 1}</span><span>${escape(reviewLabel(source))}</span></div>
     <h2>${escape(source.title)}</h2>
-    <dl class="detail-facts"><div><dt>来源名称</dt><dd>${escape(source.publisher || '未知')}</dd></div><div><dt>发布时间</dt><dd>${escape(source.date || '未知')}</dd></div><div><dt>录入时间</dt><dd>${escape(new Date(source.collectedAt).toLocaleString('zh-CN', { hour12: false }))}</dd></div><div><dt>资料状态</dt><dd>${source.access === 'available' ? (source.file ? '本地文件文本，可经人工编辑' : '已录入文本，未联网读取') : '无可用正文（失败演示）'}</dd></div></dl>
+    <dl class="detail-facts"><div><dt>来源名称</dt><dd>${escape(source.publisher || '未知')}</dd></div><div><dt>发布时间</dt><dd>${escape(source.date || '未知')}</dd></div><div><dt>收集时间</dt><dd>${escape(new Date(source.collectedAt).toLocaleString('zh-CN', { hour12: false }))}</dd></div><div><dt>资料状态</dt><dd>${escape(accessDescription)}</dd></div></dl>
     <div class="source-link">${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开来源 ${icon('external')}</a><p class="muted small">${escape(source.url)}</p>` : source.file ? '本地文件 · 未提供外部链接' : '无外部链接（虚构演示资料）'}</div>
     ${issues.length ? `<div class="issue-list">核查提示：${issues.map(escape).join('；')}</div>` : ''}
-    ${source.file ? `<p class="local-file-note">${escape(localFileLabel(source))}</p><details class="local-file-note"><summary>文件指纹（SHA-256）</summary><p>${escape(source.file.sha256)}</p></details>` : ''}<div class="saved-text-title">保存文本</div><div class="saved-text">${escape(source.text || source.note || '没有可用正文，无法纳入报告。')}</div>
+    ${source.file ? `<p class="local-file-note">${escape(localFileLabel(source))}</p><details class="local-file-note"><summary>文件指纹（SHA-256）</summary><p>${escape(source.file.sha256)}</p></details>` : ''}${webInfo}${source.note ? `<p class="source-check-note">核查备注：${escape(source.note)}</p>` : ''}${metadataForm}<div class="saved-text-title">保存文本</div><div class="saved-text">${escape(source.text || '没有可用正文，无法纳入报告。')}</div>
     <div class="detail-actions"><button class="button include" id="include-source" ${!source.text.trim() || source.access !== 'available' ? 'disabled' : ''}>${icon('check')}${source.review === 'included' ? '已纳入简报' : '纳入简报'}</button><button class="button secondary" id="exclude-source">${source.review === 'excluded' ? '已排除' : '排除此资料'}</button></div>
     <div class="detail-foot"><label class="flag-label"><input id="flag-source" type="checkbox" ${source.flagged ? 'checked' : ''}> 标记待核实</label>${source.review !== 'pending' ? '<button id="reset-review" class="link-button">撤销审核</button>' : ''}</div>`;
   $('#include-source').addEventListener('click', () => reviewSource(source.id, 'included'));
   $('#exclude-source').addEventListener('click', () => reviewSource(source.id, 'excluded'));
   $('#reset-review')?.addEventListener('click', () => reviewSource(source.id, 'pending'));
+  bindReadButtons();
+  $('#metadata-form').addEventListener('submit', event => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(event.currentTarget));
+    for (const key of Object.keys(data)) data[key] = data[key].trim();
+    if ((data.date && !isDate(data.date)) || data.publisher.length > 120 || data.note.length > 500) { $('#metadata-error').textContent = '请检查日期格式、来源名称和备注长度。'; return; }
+    Object.assign(source, data);
+    if (source.web) source.web.dateOrigin = data.date ? 'reviewed' : 'unknown';
+    invalidateReport(); persist(); renderReview();
+    toast('来源信息已保存，简报需重新生成。');
+  });
   $('#flag-source').addEventListener('change', event => {
     source.flagged = event.target.checked;
     invalidateReport(); persist(); renderReview();
@@ -210,7 +362,7 @@ function renderReport() {
     const number = report.sources.find(source => source.id === id)?.sourceNumber;
     return `<a class="citation" href="#report-source-${number}" aria-label="查看来源 ${number}">[资料 ${number}]</a>`;
   };
-  $('#report-body').innerHTML = `<div class="report-document"><div class="report-doc-header"><h2>${escape(report.task.company)}</h2><div class="doc-title">企业研究简报</div><p>研究范围：${report.task.start} — ${report.task.end}<br>关注主题：${escape(report.task.topic)}<br>生成方式：${report.mode === 'deepseek' ? 'DeepSeek 辅助整理 · 待人工核查' : '规则摘录 · 未调用模型'}<br>生成时间：${escape(new Date(report.generatedAt).toLocaleString('zh-CN', { hour12: false }))}</p></div><h3>主题概述</h3>${report.claims.map(claim => `<p class="claim">${escape(claim.text)} ${claim.sourceIds.map(citation).join('')}</p>`).join('')}<h3>资料时间线 <span class="muted small">（按发布日期）</span></h3>${[...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).map(source => `<div class="timeline-row"><span class="timeline-date">${source.date || '日期未知'}</span><div>${escape(source.title)} ${citation(source.id)}</div></div>`).join('')}<h3>信息缺口与待核实事项</h3><div class="report-gap"><ul>${report.gaps.map(gap => `<li>${escape(gap)}</li>`).join('')}</ul></div><h3>引用来源 <span class="muted small">（${report.sources.length} 条）</span></h3>${report.sources.map((source, index) => `<div id="report-source-${source.sourceNumber}" class="report-source" tabindex="-1"><strong>[资料 ${source.sourceNumber}] ${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')} · 发布：${source.date || '未知'} · 录入：${escape(source.collectedAt)}</p><p>${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开原文</a>` : source.file ? '本地文件 · 未提供外部链接' : '无外部链接 · 虚构演示资料'}</p>${source.file ? `<p>${escape(localFileLabel(source))}</p>` : ''}<details><summary>查看纳入时保存的文本</summary><div class="saved-text">${escape(source.text)}</div></details></div>`).join('')}</div>`;
+  $('#report-body').innerHTML = `<div class="report-document"><div class="report-doc-header"><h2>${escape(report.task.company)}</h2><div class="doc-title">企业研究简报</div><p>研究范围：${report.task.start} — ${report.task.end}<br>关注主题：${escape(report.task.topic)}<br>生成方式：${report.mode === 'deepseek' ? 'DeepSeek 辅助整理 · 待人工核查' : '规则摘录 · 未调用模型'}<br>生成时间：${escape(new Date(report.generatedAt).toLocaleString('zh-CN', { hour12: false }))}</p></div><h3>主题概述</h3>${report.claims.map(claim => `<p class="claim">${escape(claim.text)} ${claim.sourceIds.map(citation).join('')}</p>${claimSourceWarnings(report, claim).length ? `<p class="claim-source-warning">${claimSourceWarnings(report, claim).map(escape).join('；')}。核查备注见对应引用来源。</p>` : ''}`).join('')}<h3>资料时间线 <span class="muted small">（按发布日期）</span></h3>${[...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).map(source => `<div class="timeline-row"><span class="timeline-date">${source.date || '日期未知'}</span><div>${escape(source.title)} ${citation(source.id)}</div></div>`).join('')}<h3>信息缺口与待核实事项</h3><div class="report-gap"><ul>${report.gaps.map(gap => `<li>${escape(gap)}</li>`).join('')}</ul></div><h3>引用来源 <span class="muted small">（${report.sources.length} 条）</span></h3>${report.sources.map((source, index) => `<div id="report-source-${source.sourceNumber}" class="report-source" tabindex="-1"><strong>[资料 ${source.sourceNumber}] ${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')} · 发布：${source.date || '未知'} · 录入：${escape(source.collectedAt)}</p><p>${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开原文</a>` : source.file ? '本地文件 · 未提供外部链接' : '无外部链接 · 虚构演示资料'}</p>${source.file ? `<p>${escape(localFileLabel(source))}</p>` : ''}${source.web ? `<p>DeepSeek Fetch · 读取：${escape(source.web.fetchedAt)} · 保存 ${source.text.length} / 提取 ${source.web.originalChars} 字${source.web.truncated ? ' · 正文已截取' : ''}</p>` : ''}${source.note ? `<p>核查备注：${escape(source.note)}</p>` : ''}<details><summary>查看纳入时保存的文本</summary><div class="saved-text">${escape(source.text)}</div></details></div>`).join('')}</div>`;
 }
 
 function releaseLocalFile() {
@@ -483,11 +635,13 @@ async function loadConfig() {
     if (!response.ok) throw new Error('config unavailable');
     const config = await response.json();
     modelAvailable = config.modelAvailable === true;
+    searchAvailable = config.searchAvailable === true && config.readerAvailable !== false;
     $('#model-status').textContent = modelAvailable ? `DeepSeek 已配置 · ${config.model}` : 'DeepSeek 未配置 · 可用规则摘录';
     const option = $('#report-mode option[value="deepseek"]');
     option.disabled = !modelAvailable;
     option.textContent = modelAvailable ? `DeepSeek · ${config.model}` : 'DeepSeek · 未配置';
   } catch { $('#model-status').textContent = '无法连接本地服务 · 请检查启动状态'; }
+  updateResearchControls();
 }
 
 restore();

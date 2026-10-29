@@ -172,6 +172,23 @@ main { flex: 1; min-width: 0; max-width: 1392px; margin: auto; padding: 28px 48p
 .collection-row strong { font-size: 14px; font-weight: 500; }
 .collection-row p { color: var(--color-muted); font-size: 12px; margin-top: 6px; }
 .collection-row .link-button { flex-shrink: 0; }
+.collection-actions, .collection-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.collection-row>div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.collection-row-actions { flex-shrink: 0; justify-content: flex-end; }
+.collection-service-note { margin-top: 12px; line-height: 1.85; }
+.read-url-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--color-divider); }
+.read-url-form .field { margin: 0; }
+.collection-progress { margin-top: 20px; color: var(--color-primary); font-size: 13px; line-height: 1.85; overflow-wrap: anywhere; }
+.collection-read-error { color: var(--color-danger); }
+.query-reference { margin-top: 18px; color: var(--color-muted); font-size: 13px; }
+.query-reference summary, .source-metadata summary, .web-provenance summary { cursor: pointer; min-height: 32px; padding: 5px 0; text-underline-offset: 3px; }
+.query-reference summary:hover, .source-metadata summary:hover { color: var(--color-primary); }
+.source-metadata { margin: 20px 0; padding-top: 12px; border-top: 1px solid var(--color-divider); font-size: 13px; }
+.source-metadata form { margin-top: 12px; }
+.web-provenance { margin-top: 16px; padding: 14px 0; border-top: 1px solid var(--color-divider); border-bottom: 1px solid var(--color-divider); color: var(--color-muted); font-size: 12px; }
+.web-provenance p+p, .web-provenance button, .web-provenance details { margin-top: 10px; }
+.source-check-note { margin-top: 15px; color: var(--color-warning); font-size: 13px; white-space: pre-wrap; }
+.claim-source-warning { font-size: 12px; line-height: 1.85; margin: -7px 0 20px; padding: 8px 12px; color: var(--color-warning); background: var(--color-warning-bg); border-radius: var(--radius-control); white-space: pre-wrap; }
 
 /* Source index and reading pane share one workspace. */
 .review-stats { display: flex; gap: 30px; flex-wrap: wrap; margin-top: -5px; margin-bottom: 18px; padding: 0 0 15px; border-bottom: 1px solid var(--color-border); }

@@ -1,5 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { request as httpRequest } from 'node:http';
 import { demoWorkspace } from '../web/core.mjs';
 
 process.env.DEEPSEEK_API_KEY = 'test-only-placeholder';
@@ -11,9 +12,17 @@ let mockResponse;
 let providerCalls = 0;
 let lastProviderRequest;
 let mockFailure;
+let webResponse;
+let webGate;
 
 before(async () => {
   globalThis.fetch = async (url, options) => {
+    if (typeof url === 'string' && url.startsWith('https://api.deepseek.com/v1/tools/')) {
+      providerCalls++;
+      lastProviderRequest = JSON.parse(options.body);
+      if (webGate) await webGate;
+      return Response.json(webResponse);
+    }
     if (url === 'https://api.deepseek.com/chat/completions') {
       providerCalls++;
       lastProviderRequest = JSON.parse(options.body);
@@ -104,4 +113,79 @@ test('connection and timeout errors hide provider details and allow a later retr
   }
   mockResponse = { choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ claims: [{ text: '虚构演示摘要', sourceIds: ['demo-1'] }] }) } }] };
   assert.equal((await post()).status, 200);
+});
+
+test('research endpoints reject cross-origin, invalid scope and unsafe links before calling provider', async () => {
+  const beforeCalls = providerCalls;
+  for (const route of ['/api/search', '/api/read']) {
+    const response = await fetch(`${base}${route}`, { method: 'POST', headers: { Origin: 'https://example.com', 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(response.status, 403);
+  }
+  const inputs = [
+    ['/api/search', { task: { company: {}, topic: [], start: '2025-01-01', end: '2025-11-18' } }],
+    ['/api/search', { task: demoWorkspace().task, query: '字'.repeat(129) }],
+    ['/api/read', { url: 'http://127.0.0.1/' }],
+    ['/api/read', { url: 'https://user:password@example.com/' }]
+  ];
+  for (const [route, body] of inputs) {
+    const response = await fetch(`${base}${route}`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal(response.status, 400);
+  }
+  assert.equal(providerCalls, beforeCalls);
+});
+
+test('research endpoints separate candidate snippets from body and expose no credentials', async () => {
+  const post = (route, body) => fetch(`${base}${route}`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  webResponse = { results: [{ title: '虚构回归公告', url: 'https://example.com/news', snippet: '仅搜索摘要', date: '2026-09-10T00:00:00Z' }] };
+  const found = await post('/api/search', { task: demoWorkspace().task });
+  assert.equal(found.status, 200);
+  const result = await found.json();
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].text, undefined);
+  assert.equal(lastProviderRequest.need_content, false);
+  assert.equal(JSON.stringify(result).includes('test-only-placeholder'), false);
+  webResponse = { title: '真实读取路径的虚构测试文本', content: '【自主编写的虚构测试正文】'.repeat(20) };
+  const read = await post('/api/read', { url: 'https://example.com/news' });
+  assert.equal(read.status, 200);
+  assert.match((await read.json()).text, /虚构测试正文/);
+  webResponse = { results: [] };
+  assert.deepEqual((await (await post('/api/search', { task: demoWorkspace().task })).json()).candidates, []);
+});
+
+test('simultaneous incomplete request bodies cannot bypass the research concurrency limit', async () => {
+  let release;
+  webGate = new Promise(resolve => { release = resolve; });
+  webResponse = { title: '虚构回归正文', content: '【自主编写的虚构测试正文】'.repeat(20) };
+  const beforeCalls = providerCalls;
+  let observed = 0;
+  let headersSeen;
+  const allHeaders = new Promise(resolve => { headersSeen = resolve; });
+  const observe = req => { if (req.url === '/api/read' && ++observed === 3) headersSeen(); };
+  server.on('request', observe);
+  const requests = [];
+  const responses = [];
+  try {
+    for (let index = 0; index < 3; index++) {
+      responses.push(new Promise((resolve, reject) => {
+        const req = httpRequest(`${base}/api/read`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' } }, res => {
+          res.resume();
+          res.on('end', () => resolve(res.statusCode));
+        });
+        req.on('error', reject);
+        req.write('{"url":');
+        requests.push(req);
+      }));
+    }
+    await allHeaders;
+    for (const req of requests) req.end('"https://example.com/news"}');
+    assert.equal(await Promise.race(responses), 429);
+    assert.equal(providerCalls - beforeCalls, 2);
+    release();
+    assert.deepEqual((await Promise.all(responses)).sort(), [200, 200, 429]);
+  } finally {
+    release();
+    webGate = null;
+    server.off('request', observe);
+    for (const req of requests) req.destroy();
+  }
 });

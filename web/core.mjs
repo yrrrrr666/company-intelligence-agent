@@ -3,11 +3,12 @@ export const MAX_SOURCES = 40;
 export const MAX_TEXT = 12000;
 
 export function validateTask(input) {
+  if (!input || typeof input !== 'object') input = {};
   const errors = {};
-  if (!input.company?.trim()) errors.company = '请填写公司名称';
-  if (!input.topic?.trim()) errors.topic = '请填写研究主题';
-  if ((input.company || '').length > 100) errors.company = '公司名称最多 100 字';
-  if ((input.topic || '').length > 200) errors.topic = '研究主题最多 200 字';
+  if (typeof input.company !== 'string' || !input.company.trim()) errors.company = '请填写公司名称';
+  if (typeof input.topic !== 'string' || !input.topic.trim()) errors.topic = '请填写研究主题';
+  if (typeof input.company === 'string' && input.company.length > 100) errors.company = '公司名称最多 100 字';
+  if (typeof input.topic === 'string' && input.topic.length > 200) errors.topic = '研究主题最多 200 字';
   if (!isDate(input.start)) errors.start = '请选择有效的起始日期';
   if (!isDate(input.end)) errors.end = '请选择有效的结束日期';
   if (!errors.start && !errors.end && input.end < input.start) errors.end = '结束日期不能早于起始日期';
@@ -39,6 +40,28 @@ export function normalizeUrl(value) {
   return url.href.replace(/\/$/, '');
 }
 
+export function publicWebUrl(value) {
+  const safe = typeof value === 'string' && value.length <= 2048 ? safeUrl(value) : null;
+  if (!safe) return null;
+  const url = new URL(safe);
+  const host = url.hostname.replace(/\.$/, '');
+  if (url.port || !host.includes('.') || /[:\[\]]/.test(host) || /^[\d.]+$/.test(host) || /(^|\.)(localhost|local|internal|lan|home|onion|test|invalid)$/.test(host)) return null;
+  url.hash = '';
+  return url.href;
+}
+
+export function researchQuery(task) {
+  const boundary = (value, days) => {
+    const date = new Date(`${value}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
+  const dates = ` after:${boundary(task.start, -1)} before:${boundary(task.end, 1)}`;
+  const company = [...task.company.trim()].slice(0, 60).join('');
+  const available = 128 - [...company + dates].length - 1;
+  return `${company} ${[...task.topic.trim()].slice(0, Math.max(0, available)).join('')}${dates}`;
+}
+
 export function sourceIssues(source, task, sources) {
   const issues = [];
   if (!source.date) issues.push('发布时间未知');
@@ -48,6 +71,8 @@ export function sourceIssues(source, task, sources) {
   if (normalized && sources.some(item => item.id !== source.id && normalizeUrl(item.url) === normalized)) issues.push('URL 重复候选');
   if (source.file && sources.some(item => item.id !== source.id && item.file?.sha256 === source.file.sha256 && item.file.pageStart === source.file.pageStart && item.file.pageEnd === source.file.pageEnd)) issues.push('本地文件重复候选');
   if (source.file?.truncated) issues.push('文件文本已截取');
+  if (source.web?.truncated) issues.push('网页正文已截取');
+  if (source.web?.dateOrigin === 'search') issues.push('搜索提供的日期，待核实');
   if (source.flagged) issues.push('人工标记待核实');
   if (source.demo) issues.push('虚构演示资料');
   return issues;
@@ -72,6 +97,10 @@ export function validateSources(sources) {
     if (typeof source.flagged !== 'boolean' || typeof source.demo !== 'boolean') throw new Error('资料标记无效');
     if (!isDate(source.collectedAt?.slice(0, 10))) throw new Error('采集时间无效');
     if (typeof source.note !== 'string' || source.note.length > 500) throw new Error('资料备注无效');
+    if (source.web !== undefined) {
+      const web = source.web;
+      if (!web || web.provider !== 'deepseek' || !['pending', 'available', 'failed'].includes(web.status) || !['search', 'reviewed', 'unknown'].includes(web.dateOrigin) || typeof web.query !== 'string' || [...web.query].length > 128 || typeof web.snippet !== 'string' || web.snippet.length > 600 || typeof web.error !== 'string' || web.error.length > 500 || typeof web.truncated !== 'boolean' || !Number.isSafeInteger(web.originalChars) || web.originalChars < 0 || web.originalChars > 2 * 1024 * 1024 || (web.fetchedAt !== '' && !isDate(web.fetchedAt?.slice(0, 10))) || !publicWebUrl(source.url) || (web.status === 'available') !== (source.access === 'available' && !!source.text.trim())) throw new Error('网页来源记录无效');
+    }
     if (source.file !== undefined) {
       const file = source.file;
       if (!file || !['pdf', 'text'].includes(file.kind) || typeof file.name !== 'string' || !/^[^/\\\u0000-\u001f]{1,240}$/.test(file.name) || !Number.isSafeInteger(file.size) || file.size < 1 || file.size > 10 * 1024 * 1024 || typeof file.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(file.sha256) || !Number.isSafeInteger(file.extractedChars) || file.extractedChars < 0 || file.extractedChars > 10 * 1024 * 1024 || typeof file.truncated !== 'boolean') throw new Error('本地文件记录无效');
@@ -97,7 +126,7 @@ export function createReport(task, sources, claims = null) {
   if (!selected.length) throw new Error('请先纳入至少一条有正文的资料');
   const generatedAt = new Date().toISOString();
   const gaps = [
-    '本次资料由用户手动录入、本地文件导入或来自虚构演示，尚未执行自动联网搜索；不能判断检索覆盖情况。',
+    selected.some(source => source.web) ? '本次包含自动收集的网页资料；搜索结果与读取结果有限，不能据此认定覆盖全部相关信息。' : '纳入资料来自手动录入、本地文件或虚构演示；本报告未使用自动收集的网页正文，不能判断检索覆盖情况。',
     '资料发布日期用于时间线，不等同于事件实际发生日期。公司与主题相关性需要人工核对。',
     '引用关联不代表结论已经得到验证；请结合原文复核。'
   ];
@@ -112,7 +141,15 @@ export function createReport(task, sources, claims = null) {
   if (pending) gaps.push(`另有 ${pending} 条资料尚未审核，未用于本报告。`);
   if (failed) gaps.push(`${failed} 条资料没有可用正文，未用于本报告。`);
   const snapshots = selected.map(source => ({ ...structuredClone(source), sourceNumber: sources.indexOf(source) + 1 }));
-  return { generatedAt, mode: claims ? 'deepseek' : 'extract', task: { ...task }, sources: snapshots, claims: claims || selected.map(source => ({ text: source.text.trim().slice(0, 500), sourceIds: [source.id] })), gaps };
+  const reportClaims = (claims || selected.map(source => ({ text: source.text.trim().slice(0, 500), sourceIds: [source.id] }))).map(claim => ({ ...structuredClone(claim), sourceIds: [...claim.sourceIds] }));
+  return { generatedAt, mode: claims ? 'deepseek' : 'extract', task: { ...task }, sources: snapshots, claims: reportClaims, gaps };
+}
+
+export function claimSourceWarnings(report, claim) {
+  return report.sources.filter(source => claim.sourceIds.includes(source.id)).flatMap(source => {
+    const issues = sourceIssues(source, report.task, report.sources).filter(issue => issue !== 'URL 重复候选' && issue !== '本地文件重复候选' && issue !== '虚构演示资料');
+    return issues.length ? [`来源 ${source.sourceNumber} 待核实：${issues.join('、')}`] : source.note ? [`来源 ${source.sourceNumber} 有核查备注，请查阅来源详情`] : [];
+  });
 }
 
 export function markdownText(value) {
@@ -130,13 +167,17 @@ export function reportMarkdown(report) {
   const number = id => report.sources.find(source => source.id === id)?.sourceNumber;
   const ref = id => `[来源 ${number(id)}](#source-${number(id)})`;
   const lines = [`# ${md(report.task.company)} · 企业研究简报`, '', `研究范围：${report.task.start} 至 ${report.task.end}`, `关注主题：${md(report.task.topic)}`, `生成时间：${report.generatedAt}`, `生成方式：${report.mode === 'deepseek' ? 'DeepSeek 辅助整理（待人工核查）' : '规则摘录（未调用模型）'}`, '', '## 主题概述', ''];
-  for (const claim of report.claims) lines.push(`- ${md(claim.text)} ${claim.sourceIds.map(ref).join('、')}`);
+  for (const claim of report.claims) {
+    lines.push(`- ${md(claim.text)} ${claim.sourceIds.map(ref).join('、')}`);
+    for (const warning of claimSourceWarnings(report, claim)) lines.push(`  - ${md(warning)}`);
+  }
   lines.push('', '## 资料时间线（按发布日期）', '');
   for (const source of [...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))) lines.push(`- ${source.date || '日期未知'}：${md(source.title)} ${ref(source.id)}`);
   lines.push('', '## 信息缺口与待核实事项', '', ...report.gaps.map(gap => `- ${md(gap)}`), '', '## 引用来源', '');
   report.sources.forEach((source, index) => {
-    lines.push(`<a id="source-${source.sourceNumber}"></a>`, `### 来源 ${source.sourceNumber}：${md(source.title)}`, '', `来源名称：${md(source.publisher || '未知')}  `, `发布时间：${source.date || '未知'}  `, `采集时间：${source.collectedAt}  `, `链接：${source.url ? `[打开原文](${encodeURI(source.url).replace(/\(/g, '%28').replace(/\)/g, '%29')})` : source.file ? '本地文件，未提供外部链接' : '无外部链接（虚构演示或手动录入）'}`, ...(source.file ? [md(localFileLabel(source)), `SHA-256：${source.file.sha256}`, '保存文本可能经人工编辑，请核查原文件。'] : []), '', '保存文本：', '', ...source.text.split(/\r?\n/).map(line => `> ${md(line)}`), '');
+    lines.push(`<a id="source-${source.sourceNumber}"></a>`, `### 来源 ${source.sourceNumber}：${md(source.title)}`, '', `来源名称：${md(source.publisher || '未知')}  `, `发布时间：${source.date || '未知'}  `, `采集时间：${source.collectedAt}  `, `链接：${source.url ? `[打开原文](${encodeURI(source.url).replace(/\(/g, '%28').replace(/\)/g, '%29')})` : source.file ? '本地文件，未提供外部链接' : '无外部链接（虚构演示或手动录入）'}`, ...(source.file ? [md(localFileLabel(source)), `SHA-256：${source.file.sha256}`, '保存文本可能经人工编辑，请核查原文件。'] : []), ...(source.note ? [`核查备注：${md(source.note)}`, ''] : []), '保存文本：', '', ...source.text.split(/\r?\n/).map(line => `> ${md(line)}`), '');
   });
+  for (const source of report.sources.filter(source => source.web)) lines.push(`网页读取记录（来源 ${source.sourceNumber}）：DeepSeek Fetch；读取时间：${source.web.fetchedAt || '未读取'}；保存：${source.text.length} / 提取：${source.web.originalChars} 字${source.web.truncated ? '；正文已截取' : ''}；日期来源：${source.web.dateOrigin === 'reviewed' ? '人工确认' : source.web.dateOrigin === 'search' ? '搜索服务提供，待核实' : '未知'}。`, ...(source.web.query ? [`检索词：${md(source.web.query)}`] : []), '');
   return lines.join('\n');
 }
 
