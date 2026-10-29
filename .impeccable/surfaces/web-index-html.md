@@ -2,7 +2,7 @@
 version: 1
 slug: "web-index-html"
 primary_target: "web/index.html"
-related_targets: ["web/styles.css","web/app.mjs","web/favicon.svg"]
+related_targets: ["web/styles.css","web/app.mjs","web/import.mjs","web/favicon.svg"]
 ---
 
 # 研究工作台
@@ -24,3 +24,5 @@ FORM：七个具象方向的第七项“资料索引与状态图例”；seed:eb
 FINISH：unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
 2026-10-29 局部调整：按用户要求移除手机端专属布局与交互，示例侧栏宽 336px、独立滚动，载入成功后自动收起；本轮沿用现有视觉体系。
+
+2026-10-29 V0.3：收集页增加本地文件导入入口，复用资料编辑窗口提供文件说明、PDF 选页、正文预览与超限提示，沿用桌面布局和来源核查路径。

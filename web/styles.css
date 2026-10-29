@@ -277,3 +277,13 @@ dialog::backdrop { background: rgb(18 38 54 / 45%); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Local file preparation uses the existing source editor. */
+.heading-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.file-import-fields { border-top: 1px solid var(--color-divider); border-bottom: 1px solid var(--color-divider); padding: 16px 0; margin-bottom: 22px; }
+.import-file-info { font-weight: 600; overflow-wrap: anywhere; margin-bottom: 6px; }
+.pdf-page-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 16px; align-items: end; margin-top: 18px; }
+.pdf-page-controls .field { margin-bottom: 0; }
+#import-progress { margin-top: 12px; }
+.import-warning { color: var(--color-warning); background: var(--color-warning-bg); border-radius: var(--radius-control); padding: 12px 14px; margin-top: 12px; font-size: 13px; }
+.local-file-note { font-size: 12px; color: var(--color-muted); margin-top: 6px; overflow-wrap: anywhere; }

@@ -317,6 +317,18 @@
       "minimumWidth": "1120px",
       "sidebarWidth": "336px",
       "note": "仅桌面布局，无手机专用断点；示例侧栏默认收起。"
+    },
+    "localFileImport": {
+      "editorWidth": "640px",
+      "files": [
+        "PDF",
+        "TXT",
+        "Markdown"
+      ],
+      "sourceLink": "optional for local files",
+      "maxFileSize": "10 MB",
+      "maxSavedText": "12000 UTF-16 code units",
+      "style": "复用资料编辑窗口和状态色，页码输入并排，加载时禁用提取与保存，允许取消。"
     }
   },
   "components": [

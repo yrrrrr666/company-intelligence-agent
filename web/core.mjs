@@ -46,6 +46,8 @@ export function sourceIssues(source, task, sources) {
   if (!source.text?.trim() || source.access !== 'available') issues.push('没有可用正文');
   const normalized = normalizeUrl(source.url);
   if (normalized && sources.some(item => item.id !== source.id && normalizeUrl(item.url) === normalized)) issues.push('URL 重复候选');
+  if (source.file && sources.some(item => item.id !== source.id && item.file?.sha256 === source.file.sha256 && item.file.pageStart === source.file.pageStart && item.file.pageEnd === source.file.pageEnd)) issues.push('本地文件重复候选');
+  if (source.file?.truncated) issues.push('文件文本已截取');
   if (source.flagged) issues.push('人工标记待核实');
   if (source.demo) issues.push('虚构演示资料');
   return issues;
@@ -70,6 +72,11 @@ export function validateSources(sources) {
     if (typeof source.flagged !== 'boolean' || typeof source.demo !== 'boolean') throw new Error('资料标记无效');
     if (!isDate(source.collectedAt?.slice(0, 10))) throw new Error('采集时间无效');
     if (typeof source.note !== 'string' || source.note.length > 500) throw new Error('资料备注无效');
+    if (source.file !== undefined) {
+      const file = source.file;
+      if (!file || !['pdf', 'text'].includes(file.kind) || typeof file.name !== 'string' || !/^[^/\\\u0000-\u001f]{1,240}$/.test(file.name) || !Number.isSafeInteger(file.size) || file.size < 1 || file.size > 10 * 1024 * 1024 || typeof file.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(file.sha256) || !Number.isSafeInteger(file.extractedChars) || file.extractedChars < 0 || file.extractedChars > 10 * 1024 * 1024 || typeof file.truncated !== 'boolean') throw new Error('本地文件记录无效');
+      if (file.kind === 'pdf' && (!Number.isSafeInteger(file.totalPages) || !Number.isSafeInteger(file.pageStart) || !Number.isSafeInteger(file.pageEnd) || file.pageStart < 1 || file.pageEnd < file.pageStart || file.pageEnd > file.totalPages || file.pageEnd - file.pageStart + 1 > 100)) throw new Error('PDF 页码记录无效');
+    }
   }
   return sources;
 }
@@ -90,11 +97,12 @@ export function createReport(task, sources, claims = null) {
   if (!selected.length) throw new Error('请先纳入至少一条有正文的资料');
   const generatedAt = new Date().toISOString();
   const gaps = [
-    '本次资料由用户手动录入或来自虚构演示，尚未执行真实联网搜索；不能判断检索覆盖情况。',
+    '本次资料由用户手动录入、本地文件导入或来自虚构演示，尚未执行自动联网搜索；不能判断检索覆盖情况。',
     '资料发布日期用于时间线，不等同于事件实际发生日期。公司与主题相关性需要人工核对。',
     '引用关联不代表结论已经得到验证；请结合原文复核。'
   ];
   if (selected.some(source => source.demo)) gaps.unshift('报告包含虚构演示资料，仅供操作体验，不可作为真实企业情报使用。');
+  if (selected.some(source => source.file)) gaps.push('本地来源保留文件名、文件指纹、所选页码及保存文本；文本可能经过编辑，原文件请自行保管并核查。');
   for (const source of selected) {
     const issues = sourceIssues(source, task, sources).filter(issue => issue !== '虚构演示资料');
     if (issues.length) gaps.push(`${source.title}：${issues.join('、')}。`);
@@ -111,6 +119,12 @@ export function markdownText(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/([`*_{}\[\]<>#!|])/g, '\\$1').replace(/\r?\n/g, '  \n');
 }
 
+export function localFileLabel(source) {
+  if (!source.file) return '';
+  const file = source.file;
+  return `本地文件：${file.name}${file.kind === 'pdf' ? ` · 第 ${file.pageStart}–${file.pageEnd} 页 / 共 ${file.totalPages} 页` : ''}${file.truncated ? ' · 文本已截取' : ''}`;
+}
+
 export function reportMarkdown(report) {
   const md = markdownText;
   const number = id => report.sources.find(source => source.id === id)?.sourceNumber;
@@ -121,7 +135,7 @@ export function reportMarkdown(report) {
   for (const source of [...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))) lines.push(`- ${source.date || '日期未知'}：${md(source.title)} ${ref(source.id)}`);
   lines.push('', '## 信息缺口与待核实事项', '', ...report.gaps.map(gap => `- ${md(gap)}`), '', '## 引用来源', '');
   report.sources.forEach((source, index) => {
-    lines.push(`<a id="source-${source.sourceNumber}"></a>`, `### 来源 ${source.sourceNumber}：${md(source.title)}`, '', `来源名称：${md(source.publisher || '未知')}  `, `发布时间：${source.date || '未知'}  `, `采集时间：${source.collectedAt}  `, `链接：${source.url ? `[打开原文](${encodeURI(source.url).replace(/\(/g, '%28').replace(/\)/g, '%29')})` : '无外部链接（虚构演示或手动录入）'}`, '', '保存文本：', '', ...source.text.split(/\r?\n/).map(line => `> ${md(line)}`), '');
+    lines.push(`<a id="source-${source.sourceNumber}"></a>`, `### 来源 ${source.sourceNumber}：${md(source.title)}`, '', `来源名称：${md(source.publisher || '未知')}  `, `发布时间：${source.date || '未知'}  `, `采集时间：${source.collectedAt}  `, `链接：${source.url ? `[打开原文](${encodeURI(source.url).replace(/\(/g, '%28').replace(/\)/g, '%29')})` : source.file ? '本地文件，未提供外部链接' : '无外部链接（虚构演示或手动录入）'}`, ...(source.file ? [md(localFileLabel(source)), `SHA-256：${source.file.sha256}`, '保存文本可能经人工编辑，请核查原文件。'] : []), '', '保存文本：', '', ...source.text.split(/\r?\n/).map(line => `> ${md(line)}`), '');
   });
   return lines.join('\n');
 }

@@ -33,6 +33,11 @@ test('local server exposes only public app files and safe config', async () => {
   assert(response.headers.get('content-security-policy').includes("script-src 'self'"));
 });
 
+test('PDF assets are self hosted through a restricted allowlist', async () => {
+  for (const file of ['/import.mjs', '/vendor/pdfjs/pdf.mjs', '/vendor/pdfjs/pdf.worker.mjs']) assert.equal((await fetch(`${base}${file}`, { method: 'HEAD' })).status, 200);
+  for (const file of ['/vendor/pdfjs/package.json', '/vendor/pdfjs/../../.env', '/node_modules/pdfjs-dist/package.json', '/vendor/pdfjs/cmaps/%2f..%2f..%2f.env']) assert.equal((await fetch(`${base}${file}`)).status, 404);
+});
+
 test('report rejects cross-origin and malformed requests before reaching provider', async () => {
   const beforeCalls = providerCalls;
   assert.equal((await fetch(`${base}/api/report`, { method: 'POST', headers: { Origin: 'https://example.com', 'Content-Type': 'application/json' }, body: '{}' })).status, 403);

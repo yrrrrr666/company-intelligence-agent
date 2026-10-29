@@ -13,7 +13,14 @@ const port = Number(process.env.PORT || 4173);
 const key = process.env.DEEPSEEK_API_KEY?.trim();
 const model = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
-const publicFiles = new Set(['index.html', 'styles.css', 'app.mjs', 'core.mjs', 'favicon.svg']);
+const publicFiles = new Set(['index.html', 'styles.css', 'app.mjs', 'core.mjs', 'import.mjs', 'favicon.svg']);
+const pdfRoot = path.join(root, 'node_modules', 'pdfjs-dist');
+
+function pdfAsset(name) {
+  if (name === 'pdf.mjs' || name === 'pdf.worker.mjs') return path.join(pdfRoot, 'build', name);
+  if (/^(cmaps\/[a-zA-Z0-9_.-]+\.bcmap|standard_fonts\/[a-zA-Z0-9_.-]+\.(pfb|ttf))$/.test(name)) return path.join(pdfRoot, name);
+  return null;
+}
 
 function json(res, status, payload) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -75,6 +82,12 @@ export const server = http.createServer(async (req, res) => {
     } finally { modelBusy = false; }
   }
   if (!['GET', 'HEAD'].includes(req.method)) return json(res, 405, { error: '不支持此操作' });
+  if (pathname.startsWith('/vendor/pdfjs/')) {
+    const file = pdfAsset(pathname.slice('/vendor/pdfjs/'.length));
+    if (!file || !existsSync(file)) return json(res, 404, { error: 'PDF 组件不可用，请运行 npm install' });
+    res.writeHead(200, { 'Content-Type': file.endsWith('.mjs') ? 'text/javascript; charset=utf-8' : 'application/octet-stream', 'Cache-Control': 'no-store' });
+    return res.end(req.method === 'HEAD' ? undefined : readFileSync(file));
+  }
   const name = pathname === '/' ? 'index.html' : pathname.slice(1);
   if (!publicFiles.has(name)) return json(res, 404, { error: '页面不存在' });
   try {

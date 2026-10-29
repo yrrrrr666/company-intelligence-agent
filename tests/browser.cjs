@@ -5,6 +5,7 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs/promises');
 const { existsSync } = require('node:fs');
 const path = require('node:path');
+const { runImportChecks } = require('./import-checks.cjs');
 const root = path.resolve(__dirname, '..');
 const base = 'http://127.0.0.1:4175';
 
@@ -194,8 +195,9 @@ const base = 'http://127.0.0.1:4175';
     await freshPage.reload();
     assert.equal(await freshPage.locator('#view-create').isVisible(), true);
     assert.equal(await freshPage.locator('#demo-sidebar').isVisible(), false);
+    await runImportChecks(browser, base, root, errors);
     assert.deepEqual(errors, []);
-    console.log('PASS: desktop task validation, manual sources, unsafe input, review, citation/export, reload recovery, example sidebar, keyboard focus, replacement confirmation, 1120/1280/1440 layouts and no page errors. No real API calls.');
+    console.log('PASS: desktop task validation, manual sources, unsafe input, review, citation/export, reload recovery, example sidebar, local PDF/TXT/Markdown import, keyboard focus, replacement confirmation, 1120/1280/1440 layouts and no page errors. No real API calls.');
     await freshContext.close();
     await context.close();
   } finally {

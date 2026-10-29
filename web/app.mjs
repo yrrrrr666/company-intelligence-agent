@@ -1,4 +1,5 @@
-import { STORAGE_KEY, MAX_SOURCES, validateTask, isDate, safeUrl, sourceIssues, eligibleSources, validateSources, validateModelClaims, createReport, reportMarkdown, demoWorkspace } from './core.mjs';
+import { STORAGE_KEY, MAX_SOURCES, validateTask, isDate, safeUrl, sourceIssues, eligibleSources, validateSources, validateModelClaims, createReport, reportMarkdown, demoWorkspace, localFileLabel } from './core.mjs';
+import { checkLocalFile, openLocalFile, extractLocalText, validatePageRange, MAX_PDF_PAGES } from './import.mjs';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -15,6 +16,13 @@ let toastTimer;
 let pendingConfirmation = null;
 let requestController = null;
 let modelAvailable = false;
+let fileDocument = null;
+let fileLoadingTask = null;
+let fileMetadata = null;
+let fileGeneration = 0;
+let fileBusy = false;
+let fileMode = false;
+let rangeDirty = false;
 
 function toast(message) {
   $('#toast').textContent = message;
@@ -111,7 +119,7 @@ function renderCollection() {
   $('#collect-count').innerHTML = `${state.sources.length} <small>条资料</small>`;
   $('#collect-summary').textContent = `${state.sources.filter(source => source.access === 'available' && source.text.trim()).length} 条有保存文本，${state.sources.filter(source => source.access !== 'available').length} 条无可用正文。`;
   $('#source-count').textContent = `共 ${state.sources.length} 条 / 上限 ${MAX_SOURCES} 条`;
-  $('#collection-list').innerHTML = state.sources.length ? state.sources.map(source => `<div class="collection-row"><div><strong>${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')}，${escape(source.date || '发布时间未知')}，${source.access === 'available' ? '已保存文本' : '无可用正文'}${source.demo ? '（虚构演示）' : ''}</p></div><button class="link-button" data-open-source="${escape(source.id)}">查看资料</button></div>`).join('') : '<div class="empty-state"><svg class="empty-icon" aria-hidden="true"><use href="#i-file"/></svg><h2>还没有研究资料</h2><p>录入标题、链接与原文片段后，进入人工审核。</p><button class="button secondary" data-action="add-source">录入第一条资料</button></div>';
+  $('#collection-list').innerHTML = state.sources.length ? state.sources.map(source => `<div class="collection-row"><div><strong>${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')}，${escape(source.date || '发布时间未知')}，${source.access === 'available' ? (source.file ? '本地导入文本' : '已保存文本') : '无可用正文'}${source.demo ? '（虚构演示）' : ''}</p></div><button class="link-button" data-open-source="${escape(source.id)}">查看资料</button></div>`).join('') : '<div class="empty-state"><svg class="empty-icon" aria-hidden="true"><use href="#i-file"/></svg><h2>还没有研究资料</h2><p>录入资料或导入本地文件，再进入人工审核。</p><button class="button secondary" data-action="add-source">录入第一条资料</button></div>';
   $$('[data-open-source]').forEach(button => button.addEventListener('click', () => { selectedId = button.dataset.openSource; filter = 'all'; go('review'); }));
 }
 
@@ -156,10 +164,10 @@ function renderDetail() {
   const issues = sourceIssues(source, state.task, state.sources);
   $('#source-detail').innerHTML = `<div class="detail-top"><span>资料 ${state.sources.indexOf(source) + 1}</span><span>${escape(reviewLabel(source))}</span></div>
     <h2>${escape(source.title)}</h2>
-    <dl class="detail-facts"><div><dt>来源名称</dt><dd>${escape(source.publisher || '未知')}</dd></div><div><dt>发布时间</dt><dd>${escape(source.date || '未知')}</dd></div><div><dt>录入时间</dt><dd>${escape(new Date(source.collectedAt).toLocaleString('zh-CN', { hour12: false }))}</dd></div><div><dt>资料状态</dt><dd>${source.access === 'available' ? '已录入文本，未联网读取' : '无可用正文（失败演示）'}</dd></div></dl>
-    <div class="source-link">${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开来源 ${icon('external')}</a><p class="muted small">${escape(source.url)}</p>` : '无外部链接（虚构演示资料）'}</div>
+    <dl class="detail-facts"><div><dt>来源名称</dt><dd>${escape(source.publisher || '未知')}</dd></div><div><dt>发布时间</dt><dd>${escape(source.date || '未知')}</dd></div><div><dt>录入时间</dt><dd>${escape(new Date(source.collectedAt).toLocaleString('zh-CN', { hour12: false }))}</dd></div><div><dt>资料状态</dt><dd>${source.access === 'available' ? (source.file ? '本地文件文本，可经人工编辑' : '已录入文本，未联网读取') : '无可用正文（失败演示）'}</dd></div></dl>
+    <div class="source-link">${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开来源 ${icon('external')}</a><p class="muted small">${escape(source.url)}</p>` : source.file ? '本地文件 · 未提供外部链接' : '无外部链接（虚构演示资料）'}</div>
     ${issues.length ? `<div class="issue-list">核查提示：${issues.map(escape).join('；')}</div>` : ''}
-    <div class="saved-text-title">保存文本</div><div class="saved-text">${escape(source.text || source.note || '没有可用正文，无法纳入报告。')}</div>
+    ${source.file ? `<p class="local-file-note">${escape(localFileLabel(source))}</p><details class="local-file-note"><summary>文件指纹（SHA-256）</summary><p>${escape(source.file.sha256)}</p></details>` : ''}<div class="saved-text-title">保存文本</div><div class="saved-text">${escape(source.text || source.note || '没有可用正文，无法纳入报告。')}</div>
     <div class="detail-actions"><button class="button include" id="include-source" ${!source.text.trim() || source.access !== 'available' ? 'disabled' : ''}>${icon('check')}${source.review === 'included' ? '已纳入简报' : '纳入简报'}</button><button class="button secondary" id="exclude-source">${source.review === 'excluded' ? '已排除' : '排除此资料'}</button></div>
     <div class="detail-foot"><label class="flag-label"><input id="flag-source" type="checkbox" ${source.flagged ? 'checked' : ''}> 标记待核实</label>${source.review !== 'pending' ? '<button id="reset-review" class="link-button">撤销审核</button>' : ''}</div>`;
   $('#include-source').addEventListener('click', () => reviewSource(source.id, 'included'));
@@ -196,17 +204,133 @@ function renderReport() {
     const number = report.sources.find(source => source.id === id)?.sourceNumber;
     return `<a class="citation" href="#report-source-${number}" aria-label="查看来源 ${number}">[资料 ${number}]</a>`;
   };
-  $('#report-body').innerHTML = `<div class="report-document"><div class="report-doc-header"><h2>${escape(report.task.company)}</h2><div class="doc-title">企业研究简报</div><p>研究范围：${report.task.start} — ${report.task.end}<br>关注主题：${escape(report.task.topic)}<br>生成方式：${report.mode === 'deepseek' ? 'DeepSeek 辅助整理 · 待人工核查' : '规则摘录 · 未调用模型'}<br>生成时间：${escape(new Date(report.generatedAt).toLocaleString('zh-CN', { hour12: false }))}</p></div><h3>主题概述</h3>${report.claims.map(claim => `<p class="claim">${escape(claim.text)} ${claim.sourceIds.map(citation).join('')}</p>`).join('')}<h3>资料时间线 <span class="muted small">（按发布日期）</span></h3>${[...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).map(source => `<div class="timeline-row"><span class="timeline-date">${source.date || '日期未知'}</span><div>${escape(source.title)} ${citation(source.id)}</div></div>`).join('')}<h3>信息缺口与待核实事项</h3><div class="report-gap"><ul>${report.gaps.map(gap => `<li>${escape(gap)}</li>`).join('')}</ul></div><h3>引用来源 <span class="muted small">（${report.sources.length} 条）</span></h3>${report.sources.map((source, index) => `<div id="report-source-${source.sourceNumber}" class="report-source" tabindex="-1"><strong>[资料 ${source.sourceNumber}] ${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')} · 发布：${source.date || '未知'} · 录入：${escape(source.collectedAt)}</p><p>${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开原文</a>` : '无外部链接 · 虚构演示资料'}</p><details><summary>查看纳入时保存的文本</summary><div class="saved-text">${escape(source.text)}</div></details></div>`).join('')}</div>`;
+  $('#report-body').innerHTML = `<div class="report-document"><div class="report-doc-header"><h2>${escape(report.task.company)}</h2><div class="doc-title">企业研究简报</div><p>研究范围：${report.task.start} — ${report.task.end}<br>关注主题：${escape(report.task.topic)}<br>生成方式：${report.mode === 'deepseek' ? 'DeepSeek 辅助整理 · 待人工核查' : '规则摘录 · 未调用模型'}<br>生成时间：${escape(new Date(report.generatedAt).toLocaleString('zh-CN', { hour12: false }))}</p></div><h3>主题概述</h3>${report.claims.map(claim => `<p class="claim">${escape(claim.text)} ${claim.sourceIds.map(citation).join('')}</p>`).join('')}<h3>资料时间线 <span class="muted small">（按发布日期）</span></h3>${[...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).map(source => `<div class="timeline-row"><span class="timeline-date">${source.date || '日期未知'}</span><div>${escape(source.title)} ${citation(source.id)}</div></div>`).join('')}<h3>信息缺口与待核实事项</h3><div class="report-gap"><ul>${report.gaps.map(gap => `<li>${escape(gap)}</li>`).join('')}</ul></div><h3>引用来源 <span class="muted small">（${report.sources.length} 条）</span></h3>${report.sources.map((source, index) => `<div id="report-source-${source.sourceNumber}" class="report-source" tabindex="-1"><strong>[资料 ${source.sourceNumber}] ${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')} · 发布：${source.date || '未知'} · 录入：${escape(source.collectedAt)}</p><p>${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开原文</a>` : source.file ? '本地文件 · 未提供外部链接' : '无外部链接 · 虚构演示资料'}</p>${source.file ? `<p>${escape(localFileLabel(source))}</p>` : ''}<details><summary>查看纳入时保存的文本</summary><div class="saved-text">${escape(source.text)}</div></details></div>`).join('')}</div>`;
 }
 
-function openSourceDialog() {
+function releaseLocalFile() {
+  fileGeneration++;
+  if (fileLoadingTask) void fileLoadingTask.destroy().catch(() => {});
+  fileLoadingTask = null;
+  fileDocument = null;
+  fileMetadata = null;
+  fileBusy = false;
+  rangeDirty = false;
+}
+
+function updateFileBusy(busy) {
+  fileBusy = busy;
+  $('#save-source').disabled = busy || (fileMode && (!fileMetadata || rangeDirty));
+  $('#source-text').disabled = busy;
+  $('#extract-pages').disabled = busy;
+  $('#pdf-page-start').disabled = busy;
+  $('#pdf-page-end').disabled = busy;
+}
+
+function openSourceDialog(localFile = false) {
   if (!state.task) return;
   if (state.sources.length >= MAX_SOURCES) return toast(`单次研究最多录入 ${MAX_SOURCES} 条资料`);
+  releaseLocalFile();
+  fileMode = localFile;
   $('#source-form').reset();
   $('#source-error').textContent = '';
+  $('#source-dialog-title').textContent = localFile ? '导入本地资料' : '录入研究资料';
+  $('#file-import-fields').hidden = !localFile;
+  $('#pdf-page-controls').hidden = true;
+  $('#source-url').required = !localFile;
+  $('#source-url-required').hidden = localFile;
+  $('#source-url-optional').hidden = !localFile;
+  $('#import-progress').textContent = '';
+  $('#import-warning').hidden = true;
+  updateFileBusy(false);
   $('#source-dialog').showModal();
   $('#source-title').focus();
 }
+
+async function extractSelectedPages(generation) {
+  const document = fileDocument;
+  $('#source-error').textContent = '';
+  let start = 1, end = document.totalPages;
+  try {
+    if (document.kind === 'pdf') {
+      start = Number($('#pdf-page-start').value);
+      end = Number($('#pdf-page-end').value);
+      validatePageRange(start, end, document.totalPages);
+    }
+    updateFileBusy(true);
+    const result = await extractLocalText(document, start, end, (page, last) => {
+      if (generation === fileGeneration) $('#import-progress').textContent = `正在提取第 ${page} 页 / 所选末页 ${last}…`;
+    });
+    if (generation !== fileGeneration) return;
+    const { name, size, sha256, kind, totalPages } = document;
+    fileMetadata = { name, size, sha256, kind, extractedChars: result.extractedChars, truncated: result.truncated, ...(kind === 'pdf' ? { totalPages, pageStart: start, pageEnd: end } : {}) };
+    rangeDirty = false;
+    $('#source-text').value = result.text;
+    $('#import-progress').textContent = `已提取 ${result.extractedChars.toLocaleString('zh-CN')} 字，保存前请核对正文。`;
+    const warning = !result.text ? '没有提取到文字。扫描版 PDF 暂不支持文字识别；可手动粘贴正文，或取消并选择其他文件。' : result.truncated ? '正文超过 12,000 字，目前仅预填前 12,000 字。可缩小 PDF 页码范围重新提取，或手动选取内容；保存后会保留截取提示。' : '';
+    $('#import-warning').textContent = warning;
+    $('#import-warning').hidden = !warning;
+  } catch (error) {
+    if (generation === fileGeneration) {
+      $('#source-error').textContent = error.message || '文件提取失败，请重新选择页码或手动录入';
+      $('#import-progress').textContent = '未完成提取，未添加资料。';
+    }
+  } finally {
+    if (generation === fileGeneration) updateFileBusy(false);
+  }
+}
+
+$('#import-file-button').addEventListener('click', () => {
+  if (!state.task || state.sources.length >= MAX_SOURCES) return toast(`单次研究最多录入 ${MAX_SOURCES} 条资料`);
+  $('#source-file').value = '';
+  $('#source-file').click();
+});
+$('#source-file').addEventListener('change', async event => {
+  const file = event.currentTarget.files[0];
+  if (!file) return;
+  try { checkLocalFile(file); } catch (error) { toast(error.message); return; }
+  openSourceDialog(true);
+  const generation = fileGeneration;
+  $('#source-title').value = file.name.replace(/\.(pdf|txt|md)$/i, '').slice(0, 200);
+  const sizeLabel = file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} KB` : `${(file.size / 1024 / 1024).toFixed(2)} MB`;
+  $('#import-file-info').textContent = `${file.name} · ${sizeLabel}`;
+  $('#import-progress').textContent = '正在读取文件…';
+  updateFileBusy(true);
+  try {
+    const opened = await openLocalFile(file, loading => {
+      if (generation === fileGeneration) fileLoadingTask = loading;
+      else void loading.destroy();
+    });
+    if (generation !== fileGeneration) { await opened.pdf?.destroy(); return; }
+    fileDocument = opened;
+    if (opened.kind === 'pdf') {
+      $('#import-file-info').textContent += ` · 共 ${opened.totalPages} 页`;
+      $('#pdf-page-controls').hidden = false;
+      for (const field of ['#pdf-page-start', '#pdf-page-end']) $(field).max = opened.totalPages;
+      $('#pdf-page-start').value = 1;
+      $('#pdf-page-end').value = opened.totalPages;
+      if (opened.totalPages > MAX_PDF_PAGES) {
+        rangeDirty = true;
+        $('#import-progress').textContent = `共 ${opened.totalPages} 页，请选取不超过 ${MAX_PDF_PAGES} 页后提取。`;
+        return;
+      }
+    }
+    await extractSelectedPages(generation);
+  } catch (error) {
+    if (generation === fileGeneration) {
+      $('#source-error').textContent = error.message || '无法读取文件，请重新选择或手动录入';
+      $('#import-progress').textContent = '导入未完成，未添加资料。';
+    }
+  } finally {
+    if (generation === fileGeneration) updateFileBusy(false);
+  }
+});
+$('#extract-pages').addEventListener('click', () => { if (fileDocument && !fileBusy) void extractSelectedPages(fileGeneration); });
+for (const input of ['#pdf-page-start', '#pdf-page-end']) $(input).addEventListener('input', () => {
+  rangeDirty = true;
+  $('#import-progress').textContent = '页码已修改，请点击“提取所选页”后保存。';
+  updateFileBusy(false);
+});
+$('#source-dialog').addEventListener('close', () => { releaseLocalFile(); $('#source-file').value = ''; });
 
 $('#task-form').addEventListener('submit', event => {
   event.preventDefault();
@@ -219,7 +343,7 @@ $('#task-form').addEventListener('submit', event => {
   }
   if (Object.keys(errors).length) return $(`#${Object.keys(errors)[0]}`).focus();
   const next = { task: { ...input, id: crypto.randomUUID(), demo: false }, sources: [], report: null };
-  const action = () => { replaceWorkspace(next, 'collect'); toast('任务已创建，请录入研究资料'); };
+  const action = () => { replaceWorkspace(next, 'collect'); toast('任务已创建，可录入或导入资料'); };
   if (state.task) confirmAction('创建新任务？', '当前任务、资料和未导出的简报将被替换。需要保留的内容请先导出。', action, '创建并替换');
   else action();
 });
@@ -271,16 +395,21 @@ document.addEventListener('click', event => { if (event.target.closest('[data-ac
 
 $('#source-form').addEventListener('submit', event => {
   event.preventDefault();
+  if (fileBusy || (fileMode && (!fileMetadata || rangeDirty))) return;
   const input = Object.fromEntries(new FormData(event.currentTarget));
   for (const key of Object.keys(input)) input[key] = input[key].trim();
   let error = '';
   if (!input.title) error = '请填写资料标题';
-  else if (!safeUrl(input.url)) error = '请填写有效的 HTTP 或 HTTPS 原文链接';
+  else if ((!fileMode || input.url) && !safeUrl(input.url)) error = '请填写有效的 HTTP 或 HTTPS 原文链接';
   else if (input.date && !isDate(input.date)) error = '发布时间无效；无法确认时请留空';
   else if (!input.text) error = '请粘贴可核查的原文片段';
   else if (state.sources.length >= MAX_SOURCES) error = `单次研究最多 ${MAX_SOURCES} 条资料`;
   if (error) { $('#source-error').textContent = error; return; }
   const source = { ...input, id: crypto.randomUUID(), collectedAt: new Date().toISOString(), review: 'pending', flagged: false, access: 'available', demo: false, note: '' };
+  if (fileMode) {
+    source.file = { ...fileMetadata };
+    source.flagged = fileMetadata.truncated;
+  }
   try { validateSources([...state.sources, source]); }
   catch { $('#source-error').textContent = '资料字段过长或格式无效，请检查后重试'; return; }
   state.sources.push(source);
