@@ -83,6 +83,24 @@ export function splitLibraryText(text) {
   return chunks;
 }
 
+// Preserve the V0.5 ordering. The richer match score remains useful for focused
+// context selection, but its experimental ranking did not pass the fixed-set comparison.
+function rankingTerms(query) {
+  const value = query.normalize('NFKC').toLocaleLowerCase('zh-CN');
+  const terms = new Set(value.match(/[a-z0-9]+/g) || []);
+  for (const run of value.match(/[\p{Script=Han}]+/gu) || []) {
+    const chars = [...run];
+    if (chars.length === 1) terms.add(chars[0]);
+    else for (let index = 0; index < chars.length - 1; index++) terms.add(chars[index] + chars[index + 1]);
+  }
+  return [...terms];
+}
+
+function rankingScore(text, terms) {
+  const value = text.normalize('NFKC').toLocaleLowerCase('zh-CN');
+  return terms.reduce((sum, term) => sum + (value.includes(term) ? 1 : 0), 0);
+}
+
 function resultFor(document, chunk, query) {
   return { documentId: document.id, version: document.version, company: document.company, title: document.source.title, publisher: document.source.publisher, date: document.source.date, flagged: document.source.flagged, issues: clone(document.issues), chunk: clone(chunk), source: clone(document.source), archivedAt: document.updatedAt, preview: retrievalPreview(chunk.text, query, { offset: chunk.start }) };
 }
@@ -196,6 +214,7 @@ export class LibraryStore {
     if (!Number.isInteger(limit) || limit < 1 || limit > 8 || (input.includeFlagged !== undefined && typeof input.includeFlagged !== 'boolean')) invalid();
     for (const field of ['start', 'end']) if (input[field] !== undefined && input[field] !== '' && !isDate(input[field])) invalid('发布日期筛选无效。');
     if (input.start && input.end && input.start > input.end) invalid('结束日期不能早于起始日期。');
+    const terms = rankingTerms(query);
     return this.run(async () => {
       const store = await this.load();
       const scored = [];
@@ -206,13 +225,20 @@ export class LibraryStore {
           // Body must match; a title-only match must not inject unrelated chunks.
           const match = lexicalMatch(chunk.text, query);
           if (!match.score) continue;
-          const score = match.score + Math.min(4, lexicalMatch(doc.source.title, query).score * .05);
+          const score = rankingScore(chunk.text, terms) * 3 + rankingScore(doc.source.title, terms);
           scored.push({ score, document: doc, chunk, ranges: match.ranges.map(range => ({ start: range.start + chunk.start, end: range.end + chunk.start })) });
         }
       }
       scored.sort((a, b) => b.score - a.score || b.document.updatedAt.localeCompare(a.document.updatedAt) || a.chunk.start - b.chunk.start);
-      const selected = [];
+      const seen = new Set();
+      const first = [];
+      const remaining = [];
       for (const item of scored) {
+        if (seen.has(item.document.id)) remaining.push(item);
+        else { seen.add(item.document.id); first.push(item); }
+      }
+      const selected = [];
+      for (const item of [...first, ...remaining]) {
         const previous = selected.filter(other => other.document.id === item.document.id);
         const covered = range => previous.some(other => other.ranges.some(prior => prior.start <= range.start && prior.end >= range.end));
         const redundant = item.ranges.every(covered) && previous.some(other => {

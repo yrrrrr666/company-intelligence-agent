@@ -207,7 +207,9 @@ const output = path.join(root, 'outputs', 'v0.5-library');
     assert(matches.results.length > 0);
     assert(matches.results.every(item => item.documentId === clean.document.id));
     assert(matches.results.every(item => cleanText.slice(item.chunk.start, item.chunk.end) === item.chunk.text));
-    assert(matches.results.some(item => item.chunk.start > 0));
+    assert(matches.results.some(item => item.preview.start > item.chunk.start));
+    assert(matches.results.some(item => item.preview.text.includes('本季度汽车交付 12000 辆')));
+    assert(matches.results.every(item => cleanText.slice(item.preview.start, item.preview.end) === item.preview.text));
     for (const width of [1440, 1280, 1120]) {
       await page.setViewportSize({ width, height: 1000 });
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `Library overflow at ${width}px`);

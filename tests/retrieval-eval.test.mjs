@@ -20,6 +20,8 @@ test('partial evidence and hidden previews do not count as complete', () => {
   assert.equal(current.chunkCovered, 1);
   assert.equal(baseline.previewCovered, 0);
   assert.equal(current.previewCovered, 1);
+  assert.equal(current.prefix480Covered, 1);
+  assert.equal(current.prefix480CompleteAt5, false);
   assert.equal(scoreQuestion({ ...question, answerable: false, evidence: [] }, results, ids, 'current').falsePositive, true);
 });
 test('extractors select article body and fail closed on changed structure', () => {

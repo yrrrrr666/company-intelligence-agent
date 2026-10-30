@@ -60,6 +60,7 @@ export function scoreQuestion(question, results, sourceIdByDocument, mode) {
     end: kind === 'preview' && mode === 'current' ? result.preview?.end ?? result.chunk.end : kind === 'preview' ? Math.min(result.chunk.end, result.chunk.start + 180) : kind === 'rule' && mode === 'baseline' ? Math.min(result.chunk.end, result.chunk.start + 500) : kind === 'rule' ? result.preview?.end ?? result.chunk.end : result.chunk.end
   })).map((range, i) => kind === 'rule' && mode === 'current' ? { ...range, start: top[i].preview?.start ?? range.start } : range);
   const covered = kind => spans.filter(span => ranges(kind).some(range => range.sourceId === span.sourceId && covers(range, span))).length;
+  const prefix480Covered = spans.filter(span => top.some(result => sourceIdByDocument.get(result.documentId) === span.sourceId && covers({ start: result.chunk.start, end: Math.min(result.chunk.end, result.chunk.start + 480) }, span))).length;
   const isRelevant = result => spans.some(span => sourceIdByDocument.get(result.documentId) === span.sourceId && covers(result.chunk, span));
   let overlapPairs = 0;
   for (let i = 0; i < top.length; i++) for (let j = i + 1; j < top.length; j++) {
@@ -67,7 +68,7 @@ export function scoreQuestion(question, results, sourceIdByDocument, mode) {
   }
   return { id: question.id, answerable: question.answerable, category: question.category, returned: top.length,
     hitAt1: spans.length > 0 && !!top[0] && isRelevant(top[0]), hitAt5: covered('chunk') > 0,
-    requiredSpans: spans.length, chunkCovered: covered('chunk'), previewCovered: covered('preview'), ruleCovered: covered('rule'),
+    requiredSpans: spans.length, prefix480Covered, prefix480CompleteAt5: spans.length > 0 && prefix480Covered === spans.length, chunkCovered: covered('chunk'), previewCovered: covered('preview'), ruleCovered: covered('rule'),
     completeAt5: spans.length > 0 && covered('chunk') === spans.length,
     previewCompleteAt5: spans.length > 0 && covered('preview') === spans.length,
     ruleCompleteAt5: spans.length > 0 && covered('rule') === spans.length,
@@ -86,6 +87,7 @@ function aggregate(rows) {
     hitAt1: positives.filter(row => row.hitAt1).length, hitAt5: positives.filter(row => row.hitAt5).length,
     completeAt5: positives.filter(row => row.completeAt5).length, previewCompleteAt5: positives.filter(row => row.previewCompleteAt5).length,
     ruleCompleteAt5: positives.filter(row => row.ruleCompleteAt5).length,
+    prefix480Covered: positives.reduce((n, row) => n + row.prefix480Covered, 0), prefix480CompleteAt5: positives.filter(row => row.prefix480CompleteAt5).length,
     requiredSpans: positives.reduce((n, row) => n + row.requiredSpans, 0), chunkCovered: positives.reduce((n, row) => n + row.chunkCovered, 0),
     previewCovered: positives.reduce((n, row) => n + row.previewCovered, 0), ruleCovered: positives.reduce((n, row) => n + row.ruleCovered, 0),
     labelledRelevantChunks: relevant, positiveReturnedChunks: returned, labelledPrecisionAt5: returned ? relevant / returned : 0,
@@ -168,7 +170,7 @@ async function runEvaluation() {
     if (path.dirname(temporary) !== os.tmpdir()) throw new Error('Refusing unsafe temporary cleanup');
     await rm(temporary, { recursive: true, force: true });
   }
-  const report = { schemaVersion: 1, date: '2026-10-30', baselineCommit: manifest.baselineCommit, manifestSha256: sha256(JSON.stringify(manifest)), questionsSha256: sha256(JSON.stringify(questions)), sourceCount: manifest.sources.length, companies: [...new Set(manifest.sources.map(source => source.company))], implementation: 'actual LibraryStore.search; fixed source metadata; no model calls', currentCodeSha256: Object.fromEntries(await Promise.all(['src/library.mjs', 'web/core.mjs', 'web/retrieval.mjs'].map(async file => [file, sha256(await readFile(path.join(root, file)))]))), ...reports };
+  const report = { schemaVersion: 2, date: '2026-10-30', baselineCommit: manifest.baselineCommit, manifestSha256: sha256(JSON.stringify(manifest)), questionsSha256: sha256(JSON.stringify(questions)), sourceCount: manifest.sources.length, companies: [...new Set(manifest.sources.map(source => source.company))], implementation: 'actual LibraryStore.search; fixed source metadata; no model calls', currentCodeSha256: Object.fromEntries(await Promise.all(['src/library.mjs', 'web/core.mjs', 'web/retrieval.mjs'].map(async file => [file, sha256(await readFile(path.join(root, file)))]))), ...reports };
   await writeFile(path.join(outputDir, 'evaluation.json'), JSON.stringify(report, null, 2), 'utf8');
   console.log(JSON.stringify({ baseline: reports.baseline.aggregate, current: reports.current.aggregate, searchMs: { baseline: reports.baseline.searchMs, current: reports.current.searchMs }, report: 'outputs/v0.5.1-eval/evaluation.json' }, null, 2));
 }
