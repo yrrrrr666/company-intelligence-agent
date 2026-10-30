@@ -1,3 +1,5 @@
+import { retrievalPreview } from './retrieval.mjs';
+
 export const STORAGE_KEY = 'company-intelligence:current-task:v1';
 export const MAX_SOURCES = 40;
 export const MAX_TEXT = 12000;
@@ -153,7 +155,7 @@ export function createReport(task, sources, claims = null) {
   if (pending) gaps.push(`另有 ${pending} 条资料尚未审核，未用于本报告。`);
   if (failed) gaps.push(`${failed} 条资料没有可用正文，未用于本报告。`);
   const snapshots = selected.map(source => ({ ...structuredClone(source), sourceNumber: sources.indexOf(source) + 1 }));
-  const reportClaims = (claims || selected.map(source => ({ text: source.text.trim().slice(0, 500), sourceIds: [source.id] }))).map(claim => ({ ...structuredClone(claim), sourceIds: [...claim.sourceIds] }));
+  const reportClaims = (claims || selected.map(source => ({ text: source.library && source.text.length > 500 ? retrievalPreview(source.text, source.library.query, { maxLength: 480 }).text.trim() : source.text.trim().slice(0, 500), sourceIds: [source.id] }))).map(claim => ({ ...structuredClone(claim), sourceIds: [...claim.sourceIds] }));
   return { generatedAt, mode: claims ? 'deepseek' : 'extract', task: { ...task }, sources: snapshots, claims: reportClaims, gaps };
 }
 

@@ -1,0 +1,303 @@
+[
+  {
+    "id": "nio-q2-delivery",
+    "company": "蔚来",
+    "query": "vehicle deliveries second quarter 2025",
+    "answerable": true,
+    "category": "same-language",
+    "evidence": [
+      {
+        "sourceId": "nio-q2",
+        "start": 129,
+        "end": 314,
+        "anchors": [
+          "72,056",
+          "second quarter of 2025"
+        ],
+        "sha256": "f61ae194ee8f684b7497d875a1dadeb38a7225bb8d2023cc65d69a185761ae60"
+      }
+    ],
+    "note": "季度交付及期间；不能替代累计交付"
+  },
+  {
+    "id": "nio-q2-revenue",
+    "company": "蔚来",
+    "query": "total revenues second quarter 2025",
+    "answerable": true,
+    "category": "same-language",
+    "evidence": [
+      {
+        "sourceId": "nio-q2",
+        "start": 315,
+        "end": 528,
+        "anchors": [
+          "RMB19,008.7 million",
+          "second quarter of 2025"
+        ],
+        "sha256": "c5e871848d4b53aec73cabffdd6371f3c315195475efe9c34f4812291f7b25d1"
+      }
+    ],
+    "note": "币种、百万单位及季度均须保留"
+  },
+  {
+    "id": "nio-q2-rd",
+    "company": "蔚来",
+    "query": "research and development expenses second quarter 2025",
+    "answerable": true,
+    "category": "same-language",
+    "evidence": [
+      {
+        "sourceId": "nio-q2",
+        "start": 939,
+        "end": 1046,
+        "anchors": [
+          "second quarter of 2025",
+          "RMB3,007.0 million"
+        ],
+        "sha256": "9267b51c96060ed2ba5cefa11fd5913c43e36ddc68efa3a7801eb4a7a2e46145"
+      }
+    ],
+    "note": "研发费用在后部段落，检验相关上下文可见性"
+  },
+  {
+    "id": "nio-may-versus-cumulative",
+    "company": "蔚来",
+    "query": "May 2025 monthly delivered cumulative deliveries",
+    "answerable": true,
+    "category": "same-language",
+    "evidence": [
+      {
+        "sourceId": "nio-may",
+        "start": 0,
+        "end": 97,
+        "anchors": [
+          "23,231",
+          "May 2025"
+        ],
+        "sha256": "39b34cd403a3135e4e27cde01a31deee621448939ef3b450834a3284bdc740bd"
+      },
+      {
+        "sourceId": "nio-may",
+        "start": 345,
+        "end": 402,
+        "anchors": [
+          "760,789",
+          "May 31, 2025"
+        ],
+        "sha256": "a267ad7efa5561f032f1507988c5fb2325c5429d7485bc618a10c0b19a7e4b6f"
+      }
+    ],
+    "note": "月度交付和截至月末历史累计为不同口径"
+  },
+  {
+    "id": "xpeng-q1-revenue",
+    "company": "小鹏汽车",
+    "query": "2025年第一季度 总收入",
+    "answerable": true,
+    "category": "same-language",
+    "evidence": [
+      {
+        "sourceId": "xpeng-q1",
+        "start": 171,
+        "end": 216,
+        "anchors": [
+          "第一季度",
+          "158.1亿元"
+        ],
+        "sha256": "a2febae4a27a18978677c58f57f2b5fa647fa1d9d0e696324990743d4f8e7f73"
+      }
+    ],
+    "note": "集团总收入，不是汽车单一业务收入"
+  },
+  {
+    "id": "xpeng-q2-margins",
+    "company": "小鹏汽车",
+    "query": "2025年第二季度 毛利率 汽车毛利率",
+    "answerable": true,
+    "category": "same-language",
+    "evidence": [
+      {
+        "sourceId": "xpeng-q2",
+        "start": 226,
+        "end": 278,
+        "anchors": [
+          "第二季度",
+          "17.3%"
+        ],
+        "sha256": "a0dd95b631c5674a0bbf95e966b9505cd8aa93ec5e72e399ee3f9800d35dec94"
+      },
+      {
+        "sourceId": "xpeng-q2",
+        "start": 279,
+        "end": 329,
+        "anchors": [
+          "汽车毛利率",
+          "14.3%"
+        ],
+        "sha256": "08bf8f4636d005fbbb3c4c8f5eb17ef65f33e2e23ec18de32dc12189cc3550ab"
+      }
+    ],
+    "note": "公司与汽车毛利率分别完整覆盖"
+  },
+  {
+    "id": "xpeng-q2-versus-h1",
+    "company": "小鹏汽车",
+    "query": "2025年第二季度 1-6月 累计交付",
+    "answerable": true,
+    "category": "same-language",
+    "evidence": [
+      {
+        "sourceId": "xpeng-june",
+        "start": 74,
+        "end": 114,
+        "anchors": [
+          "第二季度",
+          "103,181台"
+        ],
+        "sha256": "17d9b9e36f23e8b94be6b6529a0f3c367c9abb5c062cda68cb89b2e47b9981b3"
+      },
+      {
+        "sourceId": "xpeng-june",
+        "start": 114,
+        "end": 156,
+        "anchors": [
+          "1-6月",
+          "197,189台"
+        ],
+        "sha256": "274cef13582d04b347824106c5415bf5cee81da0a5a03b94114264fc522c8d3f"
+      }
+    ],
+    "note": "第二季度与半年累计不能混淆"
+  },
+  {
+    "id": "xpeng-g6-g9-orders",
+    "company": "小鹏汽车",
+    "query": "2025款 小鹏G6 小鹏G9 大定",
+    "answerable": true,
+    "category": "same-language",
+    "evidence": [
+      {
+        "sourceId": "xpeng-march",
+        "start": 305,
+        "end": 330,
+        "anchors": [
+          "7分钟",
+          "大定",
+          "5,000台"
+        ],
+        "sha256": "2a4902cc3699aa23aafc15d1cf7712fab5bd7d342329fb77e97886f9488ae0e0"
+      },
+      {
+        "sourceId": "xpeng-march",
+        "start": 330,
+        "end": 356,
+        "anchors": [
+          "45分钟",
+          "大定",
+          "3,000台"
+        ],
+        "sha256": "ad858fcc7a0502ccd4e3c84087f728a336ffe28a9ecda6e2b6917010252de23f"
+      }
+    ],
+    "note": "大定数量及对应上市分钟范围，不解释为交付"
+  },
+  {
+    "id": "xpeng-orders-versus-delivery",
+    "company": "小鹏汽车",
+    "query": "2025年3月 交付 大定 小鹏G6",
+    "answerable": true,
+    "category": "same-language",
+    "evidence": [
+      {
+        "sourceId": "xpeng-march",
+        "start": 22,
+        "end": 56,
+        "anchors": [
+          "2025年3月",
+          "交付",
+          "33,205台"
+        ],
+        "sha256": "38d31f346e771ecde6bba0850194840b4d8466113edc6b2b779e23f29e56d46e"
+      },
+      {
+        "sourceId": "xpeng-march",
+        "start": 305,
+        "end": 330,
+        "anchors": [
+          "7分钟",
+          "大定",
+          "5,000台"
+        ],
+        "sha256": "2a4902cc3699aa23aafc15d1cf7712fab5bd7d342329fb77e97886f9488ae0e0"
+      }
+    ],
+    "note": "月度实际交付与特定车型大定比较，需要两段依据"
+  },
+  {
+    "id": "nio-cross-language-delivery",
+    "company": "蔚来",
+    "query": "2025年第二季度汽车交付量",
+    "answerable": true,
+    "category": "cross-language",
+    "evidence": [
+      {
+        "sourceId": "nio-q2",
+        "start": 129,
+        "end": 314,
+        "anchors": [
+          "72,056",
+          "second quarter of 2025"
+        ],
+        "sha256": "f61ae194ee8f684b7497d875a1dadeb38a7225bb8d2023cc65d69a185761ae60"
+      }
+    ],
+    "note": "故意保留中文问题与英文原文不匹配的词法局限"
+  },
+  {
+    "id": "nio-cross-language-revenue",
+    "company": "蔚来",
+    "query": "2025年第二季度总收入人民币多少",
+    "answerable": true,
+    "category": "cross-language",
+    "evidence": [
+      {
+        "sourceId": "nio-q2",
+        "start": 315,
+        "end": 528,
+        "anchors": [
+          "RMB19,008.7 million",
+          "second quarter of 2025"
+        ],
+        "sha256": "c5e871848d4b53aec73cabffdd6371f3c315195475efe9c34f4812291f7b25d1"
+      }
+    ],
+    "note": "不翻译原文或问题后重测以掩盖词法局限"
+  },
+  {
+    "id": "nio-no-answer-moon",
+    "company": "蔚来",
+    "query": "lunar mining reserves",
+    "answerable": false,
+    "category": "no-answer",
+    "evidence": [],
+    "note": "选定资料不涉及月球矿产储量"
+  },
+  {
+    "id": "xpeng-no-answer-profit",
+    "company": "小鹏汽车",
+    "query": "2025年第二季度 净利润",
+    "answerable": false,
+    "category": "no-answer",
+    "evidence": [],
+    "note": "固定选取的公司新闻未披露该季度净利润数额；相同季度字样不构成答案"
+  },
+  {
+    "id": "xpeng-no-answer-orders",
+    "company": "小鹏汽车",
+    "query": "小鹏X9 2025年6月 全国大定总量",
+    "answerable": false,
+    "category": "no-answer",
+    "evidence": [],
+    "note": "有交付或销售背景但没有该车型该月全国大定总量；不得把其他车型订单当答案"
+  }
+]

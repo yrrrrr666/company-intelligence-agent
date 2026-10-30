@@ -15,7 +15,7 @@ const port = Number(process.env.PORT || 4173);
 const key = process.env.DEEPSEEK_API_KEY?.trim();
 const model = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
-const publicFiles = new Set(['index.html', 'styles.css', 'app.mjs', 'core.mjs', 'import.mjs', 'research.mjs', 'library.mjs', 'favicon.svg']);
+const publicFiles = new Set(['index.html', 'styles.css', 'app.mjs', 'core.mjs', 'import.mjs', 'research.mjs', 'library.mjs', 'retrieval.mjs', 'favicon.svg']);
 const pdfRoot = path.join(root, 'node_modules', 'pdfjs-dist');
 const library = new LibraryStore({ filePath: process.env.LIBRARY_PATH || path.join(root, 'data', 'library.json') });
 

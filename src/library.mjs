@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { validateTask, validateSources, sourceIssues, normalizeUrl, isDate } from '../web/core.mjs';
+import { lexicalMatch, retrievalPreview } from '../web/retrieval.mjs';
 
 const MAX_DOCUMENTS = 200;
 const MAX_REVISIONS = 20;
@@ -82,22 +83,8 @@ export function splitLibraryText(text) {
   return chunks;
 }
 
-function tokens(value) {
-  const normalized = value.normalize('NFKC').toLocaleLowerCase('zh-CN');
-  const result = new Set(normalized.match(/[a-z0-9]+/g) || []);
-  for (const run of normalized.match(/[\p{Script=Han}]+/gu) || []) {
-    const chars = [...run];
-    if (chars.length === 1) result.add(chars[0]);
-    else for (let i = 0; i < chars.length - 1; i++) result.add(chars[i] + chars[i + 1]);
-  }
-  return [...result];
-}
-function scoreText(text, queryTokens) {
-  const value = text.normalize('NFKC').toLocaleLowerCase('zh-CN');
-  return queryTokens.reduce((score, token) => score + (value.includes(token) ? 1 : 0), 0);
-}
-function resultFor(document, chunk) {
-  return { documentId: document.id, version: document.version, company: document.company, title: document.source.title, publisher: document.source.publisher, date: document.source.date, flagged: document.source.flagged, issues: clone(document.issues), chunk: clone(chunk), source: clone(document.source), archivedAt: document.updatedAt };
+function resultFor(document, chunk, query) {
+  return { documentId: document.id, version: document.version, company: document.company, title: document.source.title, publisher: document.source.publisher, date: document.source.date, flagged: document.source.flagged, issues: clone(document.issues), chunk: clone(chunk), source: clone(document.source), archivedAt: document.updatedAt, preview: retrievalPreview(chunk.text, query, { offset: chunk.start }) };
 }
 
 function validateStore(store) {
@@ -209,7 +196,6 @@ export class LibraryStore {
     if (!Number.isInteger(limit) || limit < 1 || limit > 8 || (input.includeFlagged !== undefined && typeof input.includeFlagged !== 'boolean')) invalid();
     for (const field of ['start', 'end']) if (input[field] !== undefined && input[field] !== '' && !isDate(input[field])) invalid('发布日期筛选无效。');
     if (input.start && input.end && input.start > input.end) invalid('结束日期不能早于起始日期。');
-    const terms = tokens(query);
     return this.run(async () => {
       const store = await this.load();
       const scored = [];
@@ -218,21 +204,30 @@ export class LibraryStore {
         if ((input.start || input.end) && (!doc.source.date || (input.start && doc.source.date < input.start) || (input.end && doc.source.date > input.end))) continue;
         for (const chunk of splitLibraryText(doc.source.text)) {
           // Body must match; a title-only match must not inject unrelated chunks.
-          const bodyScore = scoreText(chunk.text, terms);
-          if (!bodyScore) continue;
-          const score = bodyScore * 3 + scoreText(doc.source.title, terms);
-          scored.push({ score, document: doc, chunk });
+          const match = lexicalMatch(chunk.text, query);
+          if (!match.score) continue;
+          const score = match.score + Math.min(4, lexicalMatch(doc.source.title, query).score * .05);
+          scored.push({ score, document: doc, chunk, ranges: match.ranges.map(range => ({ start: range.start + chunk.start, end: range.end + chunk.start })) });
         }
       }
       scored.sort((a, b) => b.score - a.score || b.document.updatedAt.localeCompare(a.document.updatedAt) || a.chunk.start - b.chunk.start);
-      // First return the strongest chunk of each document, then remaining chunks.
-      const seen = new Set(); const first = []; const remaining = [];
-      for (const item of scored) { if (seen.has(item.document.id)) remaining.push(item); else { seen.add(item.document.id); first.push(item); } }
-      return { results: [...first, ...remaining].slice(0, limit).map(item => resultFor(item.document, item.chunk)), total: scored.length, mode: 'keyword' };
+      const selected = [];
+      for (const item of scored) {
+        const previous = selected.filter(other => other.document.id === item.document.id);
+        const covered = range => previous.some(other => other.ranges.some(prior => prior.start <= range.start && prior.end >= range.end));
+        const redundant = item.ranges.every(covered) && previous.some(other => {
+          item.preview ||= retrievalPreview(item.chunk.text, query, { offset: item.chunk.start });
+          other.preview ||= retrievalPreview(other.chunk.text, query, { offset: other.chunk.start });
+          const overlap = Math.max(0, Math.min(item.preview.end, other.preview.end) - Math.max(item.preview.start, other.preview.start));
+          return overlap / Math.min(item.preview.end - item.preview.start, other.preview.end - other.preview.start) >= .7;
+        });
+        if (!redundant) selected.push(item);
+      }
+      return { results: selected.slice(0, limit).map(item => resultFor(item.document, item.chunk, query)), total: selected.length, mode: 'keyword' };
     });
   }
   async retrieve(input) {
-    checkedId(input?.documentId); checkedVersion(input?.version); checkedQuery(input?.query);
+    checkedId(input?.documentId); checkedVersion(input?.version); const query = checkedQuery(input?.query);
     if (typeof input.chunkId !== 'string' || !/^chunk-[1-9]\d{0,2}$/.test(input.chunkId)) invalid('检索片段编号无效。');
     return this.run(async () => {
       const doc = (await this.load()).documents.find(item => item.id === input.documentId);
@@ -240,7 +235,7 @@ export class LibraryStore {
       if (doc.status !== 'active' || doc.version !== input.version) throw new LibraryError('资料已撤回或更新，请重新检索后再使用。', 409, 'LIBRARY_STALE_VERSION');
       const chunk = splitLibraryText(doc.source.text).find(item => item.id === input.chunkId);
       if (!chunk) throw new LibraryError('检索片段不存在，请重新检索。', 404, 'LIBRARY_NOT_FOUND');
-      return { result: resultFor(doc, chunk) };
+      return { result: resultFor(doc, chunk, query) };
     });
   }
 }

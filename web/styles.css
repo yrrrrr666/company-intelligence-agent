@@ -347,6 +347,8 @@ dialog::backdrop { background: rgb(18 38 54 / 45%); }
 .library-detail h2 { font-size: 20px; line-height: 1.7; margin: 13px 0 20px; }
 .library-detail .saved-text { max-height: 420px; }
 .library-matched-text { padding: 12px 14px; background: var(--color-surface-subtle); border-radius: var(--radius-control); }
+.library-keyword { background: var(--color-warning-bg); color: var(--color-ink); font-weight: 600; padding: 0 1px; border-radius: 2px; }
+.library-context-ellipsis { color: var(--color-muted); }
 .library-original-text { margin-top: 18px; font-size: 13px; }
 .library-original-text>summary { cursor: pointer; min-height: 34px; padding: 6px 0; color: #215d83; }
 .library-original-text>.saved-text { margin-top: 12px; }

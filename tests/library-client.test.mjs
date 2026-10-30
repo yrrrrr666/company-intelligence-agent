@@ -26,6 +26,44 @@ function fixture() {
 
 const task = { id: 'task-2', company: '测试汽车公司', start: '2026-10-01', end: '2026-10-30', topic: '汽车交付变化' };
 
+test('matched context import keeps exact original offsets and rejects fabricated preview text or marks', () => {
+  const result = fixture();
+  const start = result.chunk.start;
+  const end = start + '本季度交付车辆 12000 辆，'.length;
+  result.preview = { start, end, text: result.source.text.slice(start, end), matchRanges: [{ start, end: start + 3 }] };
+  const imported = libraryResultSource(result, '本季度交付');
+  assert.equal(imported.text, result.preview.text);
+  assert.equal(imported.library.start, start);
+  assert.equal(imported.library.end, end);
+  assert.equal(imported.library.chunkId, result.chunk.id);
+  assert.equal(imported.review, 'pending');
+  for (const mutate of [
+    value => { value.text += '编造'; },
+    value => { value.start = result.chunk.start - 1; },
+    value => { value.matchRanges[0].end = end + 1; },
+    value => { value.matchRanges.push({ start, end: start + 1 }); },
+    value => { value.matchRanges = null; }
+  ]) {
+    const broken = structuredClone(result);
+    mutate(broken.preview);
+    assert.throws(() => libraryResultSource(broken, '本季度交付'));
+  }
+});
+
+test('legacy library rule excerpts find matched evidence after the first 500 characters without altering snapshots', () => {
+  const result = fixture();
+  const evidence = '2026年第三季度汽车交付12000辆，截至季末累计交付30000辆，累计并非本季。';
+  result.source.text = '公司业务背景与治理说明。'.repeat(45) + evidence + '后续安排尚未确定。'.repeat(6);
+  result.chunk = { id: 'chunk-1', start: 0, end: result.source.text.length, text: result.source.text };
+  const imported = libraryResultSource(result, '汽车交付');
+  imported.review = 'included';
+  const report = createReport(task, [imported]);
+  assert(report.claims[0].text.includes(evidence));
+  assert(report.claims[0].text.length <= 480);
+  assert.equal(report.sources[0].text, result.source.text);
+  assert.equal(imported.text, result.source.text);
+});
+
 test('library imports are new pending snapshots with exact chunk, original metadata and immutable warning history', () => {
   const result = fixture();
   const imported = libraryResultSource(result, ' 汽车交付 ');

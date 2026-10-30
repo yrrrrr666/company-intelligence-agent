@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "821a40f",
+  "frozenDate": "2026-10-30",
+  "scope": "two companies, original corporate webpage bodies; NIO financial page is a company summary not full IR filing",
+  "sources": [
+    {
+      "id": "nio-may",
+      "company": "蔚来",
+      "publisher": "NIO公司官网",
+      "url": "https://www.nio.com/news/20250603001",
+      "date": "2025-06-01",
+      "title": "NIO May 2025 delivery update",
+      "extractor": "nio-next-news-content-v1",
+      "language": "en",
+      "accessedAt": "2026-10-30",
+      "sha256": "7d217f775c142aaae213c969e18fde99f12c12ecba752cedfcf872ccdc0d3203",
+      "textLength": 402,
+      "selection": {
+        "type": "entire-article-body",
+        "originalStart": 0,
+        "originalEnd": 402,
+        "truncated": false
+      }
+    },
+    {
+      "id": "nio-q2",
+      "company": "蔚来",
+      "publisher": "NIO公司官网",
+      "url": "https://www.nio.com/news/20250902001",
+      "date": "2025-09-02",
+      "title": "NIO second quarter 2025 financial results",
+      "extractor": "nio-next-news-content-v1",
+      "language": "en",
+      "accessedAt": "2026-10-30",
+      "sha256": "00e6c2bc4f78f51a291c70e81a1807268a96bc967d4eee1f00a25ffdc132e11a",
+      "textLength": 1448,
+      "selection": {
+        "type": "entire-article-body",
+        "originalStart": 0,
+        "originalEnd": 1448,
+        "truncated": false
+      }
+    },
+    {
+      "id": "xpeng-march",
+      "company": "小鹏汽车",
+      "publisher": "小鹏汽车官网",
+      "url": "https://www.xiaopeng.com/news/company_news/5458.html",
+      "date": "2025-04-01",
+      "title": "小鹏汽车2025年3月及第一季度交付",
+      "extractor": "xpeng-art-content-v1",
+      "language": "zh",
+      "accessedAt": "2026-10-30",
+      "sha256": "0553b6c69531b199d4f735aff9c81c670b89a089262fbcf8fc4fa0c68aff325a",
+      "textLength": 1816,
+      "selection": {
+        "type": "entire-article-body",
+        "originalStart": 0,
+        "originalEnd": 1816,
+        "truncated": false
+      }
+    },
+    {
+      "id": "xpeng-q1",
+      "company": "小鹏汽车",
+      "publisher": "小鹏汽车官网",
+      "url": "https://www.xiaopeng.com/news/company_news/5470.html",
+      "date": "2025-05-21",
+      "title": "小鹏汽车2025年第一季度财报",
+      "extractor": "xpeng-art-content-v1",
+      "language": "zh",
+      "accessedAt": "2026-10-30",
+      "sha256": "b6c08ab04b74b56007afa10b4db86a8731fd9c40b865abbc80c0c148b372b1c4",
+      "textLength": 2330,
+      "selection": {
+        "type": "entire-article-body",
+        "originalStart": 0,
+        "originalEnd": 2330,
+        "truncated": false
+      }
+    },
+    {
+      "id": "xpeng-june",
+      "company": "小鹏汽车",
+      "publisher": "小鹏汽车官网",
+      "url": "https://www.xiaopeng.com/news/company_news/5480.html",
+      "date": "2025-07-02",
+      "title": "小鹏汽车2025年6月与上半年交付",
+      "extractor": "xpeng-art-content-v1",
+      "language": "zh",
+      "accessedAt": "2026-10-30",
+      "sha256": "d2161823e5cb285ad6a6fa6fc3750d2c4ae1622705f41ec15349fe662a8e2868",
+      "textLength": 2537,
+      "selection": {
+        "type": "entire-article-body",
+        "originalStart": 0,
+        "originalEnd": 2537,
+        "truncated": false
+      }
+    },
+    {
+      "id": "xpeng-q2",
+      "company": "小鹏汽车",
+      "publisher": "小鹏汽车官网",
+      "url": "https://www.xiaopeng.com/news/company_news/5492.html",
+      "date": "2025-08-19",
+      "title": "小鹏汽车2025年第二季度财报",
+      "extractor": "xpeng-art-content-v1",
+      "language": "zh",
+      "accessedAt": "2026-10-30",
+      "sha256": "d75be44158efd5ad9ed3d50ee4b79e8ca295a082e1828abfc273b693dc6ab6ff",
+      "textLength": 3520,
+      "selection": {
+        "type": "entire-article-body",
+        "originalStart": 0,
+        "originalEnd": 3520,
+        "truncated": false
+      }
+    }
+  ]
+}
