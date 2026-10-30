@@ -2,6 +2,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
 import { demoWorkspace } from '../web/core.mjs';
+import { libraryResultSource } from '../web/library.mjs';
 
 process.env.DEEPSEEK_API_KEY = 'test-only-placeholder';
 process.env.PORT = '0';
@@ -94,6 +95,30 @@ test('model failures distinguish truncated, empty, malformed and invalid cited o
     assert.equal(JSON.stringify(result).includes('test-only-placeholder'), false);
     assert.equal(JSON.stringify(result).includes('not json'), false);
   }
+});
+
+test('model receives only approved library chunks and retains historical cautions even if the task flag is cleared', async () => {
+  const workspace = demoWorkspace();
+  const original = { ...workspace.sources[0], demo: false, review: 'included', text: '不应发送的前文。汽车季度交付 12000 辆。未被选取的后文。' };
+  const start = original.text.indexOf('汽车');
+  const end = original.text.indexOf('未被选取');
+  const imported = libraryResultSource({ documentId: 'model-document', version: 2, company: workspace.task.company, issues: ['需核对季度口径'], source: original, chunk: { id: 'chunk-2', start, end, text: original.text.slice(start, end) } }, '季度交付');
+  imported.review = 'included';
+  imported.flagged = false;
+  workspace.sources = [imported, { ...original, id: 'excluded-evidence', review: 'excluded' }];
+  mockResponse = { choices: [{ message: { content: JSON.stringify({ claims: [{ text: '合成回归：季度交付 12000 辆，待核实。', sourceIds: [imported.id] }] }) } }] };
+  const response = await fetch(`${base}/api/report`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify(workspace) });
+  assert.equal(response.status, 200);
+  const payload = JSON.parse(lastProviderRequest.messages.at(-1).content);
+  assert.equal(payload.sources.length, 1);
+  assert.equal(payload.sources[0].text, original.text.slice(start, end));
+  assert.equal(payload.sources[0].needsVerification, true);
+  assert.equal(payload.sources[0].library.documentId, 'model-document');
+  assert.equal(payload.sources[0].library.version, 2);
+  assert.deepEqual(payload.sources[0].library.archivedIssues, ['需核对季度口径']);
+  assert(!JSON.stringify(payload).includes('不应发送的前文'));
+  assert(!JSON.stringify(payload).includes('excluded-evidence'));
+  assert.match(lastProviderRequest.messages[0].content, /同一 documentId/);
 });
 
 test('connection and timeout errors hide provider details and allow a later retry', async () => {

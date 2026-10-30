@@ -68,12 +68,18 @@ export function sourceIssues(source, task, sources) {
   else if (source.date < task.start || source.date > task.end) issues.push('发布时间超出研究范围');
   if (!source.text?.trim() || source.access !== 'available') issues.push('没有可用正文');
   const normalized = normalizeUrl(source.url);
-  if (normalized && sources.some(item => item.id !== source.id && normalizeUrl(item.url) === normalized)) issues.push('URL 重复候选');
-  if (source.file && sources.some(item => item.id !== source.id && item.file?.sha256 === source.file.sha256 && item.file.pageStart === source.file.pageStart && item.file.pageEnd === source.file.pageEnd)) issues.push('本地文件重复候选');
+  const otherOrigin = item => item.id !== source.id && !(source.library && item.library?.documentId === source.library.documentId && item.library?.version === source.library.version);
+  if (normalized && sources.some(item => otherOrigin(item) && normalizeUrl(item.url) === normalized)) issues.push('URL 重复候选');
+  if (source.file && sources.some(item => otherOrigin(item) && item.file?.sha256 === source.file.sha256 && item.file.pageStart === source.file.pageStart && item.file.pageEnd === source.file.pageEnd)) issues.push('本地文件重复候选');
   if (source.file?.truncated) issues.push('文件文本已截取');
   if (source.web?.truncated) issues.push('网页正文已截取');
   if (source.web?.dateOrigin === 'search') issues.push('搜索提供的日期，待核实');
   if (source.flagged) issues.push('人工标记待核实');
+  if (source.library) {
+    const companyKey = value => value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('zh-CN');
+    if (companyKey(source.library.company) !== companyKey(task.company)) issues.push('资料库公司与当前研究公司不同');
+    for (const issue of source.library.archivedIssues) issues.push(`入库时：${issue}`);
+  }
   if (source.demo) issues.push('虚构演示资料');
   return issues;
 }
@@ -97,6 +103,11 @@ export function validateSources(sources) {
     if (typeof source.flagged !== 'boolean' || typeof source.demo !== 'boolean') throw new Error('资料标记无效');
     if (!isDate(source.collectedAt?.slice(0, 10))) throw new Error('采集时间无效');
     if (typeof source.note !== 'string' || source.note.length > 500) throw new Error('资料备注无效');
+    if (source.library !== undefined) {
+      const library = source.library;
+      const identifier = value => typeof value === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(value);
+      if (!library || !identifier(library.documentId) || !identifier(library.chunkId) || !Number.isSafeInteger(library.version) || library.version < 1 || typeof library.company !== 'string' || !library.company.trim() || library.company.length > 100 || typeof library.query !== 'string' || !library.query.trim() || library.query.length > 200 || !isDate(library.retrievedAt?.slice(0, 10)) || !Number.isSafeInteger(library.start) || !Number.isSafeInteger(library.end) || !Number.isSafeInteger(library.originalLength) || library.start < 0 || library.end <= library.start || library.end > library.originalLength || library.originalLength > MAX_TEXT || library.end - library.start !== source.text.length || !Array.isArray(library.archivedIssues) || library.archivedIssues.length > 20 || library.archivedIssues.some(issue => typeof issue !== 'string' || !issue.trim() || issue.length > 200) || source.demo) throw new Error('资料库片段记录无效');
+    }
     if (source.web !== undefined) {
       const web = source.web;
       if (!web || web.provider !== 'deepseek' || !['pending', 'available', 'failed'].includes(web.status) || !['search', 'reviewed', 'unknown'].includes(web.dateOrigin) || typeof web.query !== 'string' || [...web.query].length > 128 || typeof web.snippet !== 'string' || web.snippet.length > 600 || typeof web.error !== 'string' || web.error.length > 500 || typeof web.truncated !== 'boolean' || !Number.isSafeInteger(web.originalChars) || web.originalChars < 0 || web.originalChars > 2 * 1024 * 1024 || (web.fetchedAt !== '' && !isDate(web.fetchedAt?.slice(0, 10))) || !publicWebUrl(source.url) || (web.status === 'available') !== (source.access === 'available' && !!source.text.trim())) throw new Error('网页来源记录无效');
@@ -132,6 +143,7 @@ export function createReport(task, sources, claims = null) {
   ];
   if (selected.some(source => source.demo)) gaps.unshift('报告包含虚构演示资料，仅供操作体验，不可作为真实企业情报使用。');
   if (selected.some(source => source.file)) gaps.push('本地来源保留文件名、文件指纹、所选页码及保存文本；文本可能经过编辑，原文件请自行保管并核查。');
+  if (selected.some(source => source.library)) gaps.push('本次包含资料库关键词检索片段，不代表原文全部内容或相关资料已完整覆盖；同一文档的多个片段不构成独立证据。片段保留检索时的版本快照，之后撤回或更新资料库不会改写已保存的研究依据。');
   for (const source of selected) {
     const issues = sourceIssues(source, task, sources).filter(issue => issue !== '虚构演示资料');
     if (issues.length) gaps.push(`${source.title}：${issues.join('、')}。`);
@@ -162,6 +174,12 @@ export function localFileLabel(source) {
   return `本地文件：${file.name}${file.kind === 'pdf' ? ` · 第 ${file.pageStart}–${file.pageEnd} 页 / 共 ${file.totalPages} 页` : ''}${file.truncated ? ' · 文本已截取' : ''}`;
 }
 
+export function librarySourceLabel(source) {
+  const library = source.library;
+  if (!library) return '';
+  return `资料库：${library.company} · 文档 ${library.documentId} · 版本 ${library.version} · 片段 ${library.chunkId} · 字符 ${library.start + 1}–${library.end} / ${library.originalLength}（检索片段，非全文；字符位置按保存文本计）`;
+}
+
 export function reportMarkdown(report) {
   const md = markdownText;
   const number = id => report.sources.find(source => source.id === id)?.sourceNumber;
@@ -178,6 +196,7 @@ export function reportMarkdown(report) {
     lines.push(`<a id="source-${source.sourceNumber}"></a>`, `### 来源 ${source.sourceNumber}：${md(source.title)}`, '', `来源名称：${md(source.publisher || '未知')}  `, `发布时间：${source.date || '未知'}  `, `采集时间：${source.collectedAt}  `, `链接：${source.url ? `[打开原文](${encodeURI(source.url).replace(/\(/g, '%28').replace(/\)/g, '%29')})` : source.file ? '本地文件，未提供外部链接' : '无外部链接（虚构演示或手动录入）'}`, ...(source.file ? [md(localFileLabel(source)), `SHA-256：${source.file.sha256}`, '保存文本可能经人工编辑，请核查原文件。'] : []), ...(source.note ? [`核查备注：${md(source.note)}`, ''] : []), '保存文本：', '', ...source.text.split(/\r?\n/).map(line => `> ${md(line)}`), '');
   });
   for (const source of report.sources.filter(source => source.web)) lines.push(`网页读取记录（来源 ${source.sourceNumber}）：DeepSeek Fetch；读取时间：${source.web.fetchedAt || '未读取'}；保存：${source.text.length} / 提取：${source.web.originalChars} 字${source.web.truncated ? '；正文已截取' : ''}；日期来源：${source.web.dateOrigin === 'reviewed' ? '人工确认' : source.web.dateOrigin === 'search' ? '搜索服务提供，待核实' : '未知'}。`, ...(source.web.query ? [`检索词：${md(source.web.query)}`] : []), '');
+  for (const source of report.sources.filter(source => source.library)) lines.push(`资料库检索记录（来源 ${source.sourceNumber}）：${md(librarySourceLabel(source))}`, `检索词：${md(source.library.query)}  `, `检索时间：${source.library.retrievedAt}`, ...(source.library.archivedIssues.length ? [`入库时提示：${source.library.archivedIssues.map(md).join('；')}`] : []), '');
   return lines.join('\n');
 }
 

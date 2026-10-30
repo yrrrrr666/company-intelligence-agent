@@ -1,6 +1,8 @@
 import { STORAGE_KEY, MAX_SOURCES, validateTask, isDate, safeUrl, sourceIssues, eligibleSources, validateSources, validateModelClaims, createReport, reportMarkdown, demoWorkspace, localFileLabel, publicWebUrl, normalizeUrl, researchQuery, claimSourceWarnings } from './core.mjs';
 import { checkLocalFile, openLocalFile, extractLocalText, validatePageRange, MAX_PDF_PAGES } from './import.mjs';
 import { mergeSearchCandidates, saveWebText } from './research.mjs';
+import { libraryResultSource } from './library.mjs';
+import { librarySourceLabel } from './core.mjs';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -26,6 +28,8 @@ let fileMode = false;
 let rangeDirty = false;
 let searchAvailable = false;
 let collectionController = null;
+const libraryView = { documents: [], results: [], selectedDocument: null, selectedResult: null, panel: 'documents', returnStep: 'create', returnFocus: null, generation: 0, listRequest: 0, searchRequest: 0, query: '', busy: false, adding: new Set() };
+const archiveRequests = new Set();
 
 function toast(message) {
   $('#toast').textContent = message;
@@ -64,6 +68,7 @@ function confirmAction(title, description, action, accept = '确认替换') {
 }
 
 function replaceWorkspace(next, step) {
+  libraryView.generation++;
   stopCollection(false);
   invalidateReport();
   state = next;
@@ -92,7 +97,8 @@ function invalidateReport() {
 }
 
 function go(step) {
-  if (!state.task && step !== 'create') return;
+  if (!state.task && !['create', 'library'].includes(step)) return;
+  if (currentStep === 'library' && step !== 'library') libraryView.generation++;
   currentStep = step;
   for (const view of $$('.view')) view.hidden = view.id !== `view-${step}`;
   for (const button of $$('[data-step]')) {
@@ -108,6 +114,8 @@ function go(step) {
   if (step === 'collect') renderCollection();
   if (step === 'review') renderReview();
   if (step === 'report') renderReport();
+  $('#open-library').setAttribute('aria-current', step === 'library' ? 'page' : 'false');
+  if (step === 'library') renderLibrary();
   $('#main').focus({ preventScroll: true });
   window.scrollTo(0, 0);
 }
@@ -300,7 +308,7 @@ function renderDetail() {
     return;
   }
   const issues = sourceIssues(source, state.task, state.sources);
-  const accessDescription = source.web ? ({ pending: '候选链接，尚未读取正文', available: 'DeepSeek Fetch 读取的网页正文', failed: '网页读取失败，可重试' })[source.web.status] : source.access === 'available' ? (source.file ? '本地文件文本，可经人工编辑' : '已录入文本，未联网读取') : '无可用正文';
+  const accessDescription = source.library ? '资料库检索片段（非全文）' : source.web ? ({ pending: '候选链接，尚未读取正文', available: 'DeepSeek Fetch 读取的网页正文', failed: '网页读取失败，可重试' })[source.web.status] : source.access === 'available' ? (source.file ? '本地文件文本，可经人工编辑' : '已录入文本，未联网读取') : '无可用正文';
   const webInfo = source.web ? `<div class="web-provenance"><p>正文服务：DeepSeek Fetch · 读取时间：${source.web.fetchedAt ? escape(new Date(source.web.fetchedAt).toLocaleString('zh-CN', { hour12: false })) : '尚未读取'}</p><p>保存 ${source.text.length} 字 / 提取 ${source.web.originalChars} 字${source.web.truncated ? '，正文已截取' : ''}；日期${source.web.dateOrigin === 'reviewed' ? '已人工确认' : source.web.dateOrigin === 'search' ? '由搜索服务提供，待核实' : '未知'}</p>${source.web.error ? `<p class="field-error">${escape(source.web.error)}</p>` : ''}${source.web.status !== 'available' ? `<button class="button secondary" data-read-source="${escape(source.id)}" ${collectionController || !searchAvailable ? 'disabled' : ''}>${source.web.status === 'failed' ? '重试读取' : '读取正文'}</button>` : ''}${source.web.snippet ? `<details><summary>搜索摘要（非正文，不用于简报）</summary><p>${escape(source.web.snippet)}</p></details>` : ''}</div>` : '';
   const metadataForm = `<details class="source-metadata"><summary>核实来源信息与备注</summary><form id="metadata-form" novalidate><div class="field"><label for="review-publisher">来源名称</label><input id="review-publisher" name="publisher" maxlength="120" value="${escape(source.publisher)}"></div><div class="field"><label for="review-date">资料发布日期</label><input id="review-date" name="date" type="date" value="${escape(source.date)}"><span class="field-help">请核对原文。无法确认时留空，不以采集时间代替。</span></div><div class="field"><label for="review-note">核查备注</label><textarea id="review-note" name="note" rows="2" maxlength="500" placeholder="记录口径差异、缺失信息或核查依据">${escape(source.note)}</textarea></div><p id="metadata-error" class="field-error" role="alert"></p><button class="button secondary" type="submit">确认并保存来源信息</button></form></details>`;
   $('#source-detail').innerHTML = `<div class="detail-top"><span>资料 ${state.sources.indexOf(source) + 1}</span><span>${escape(reviewLabel(source))}</span></div>
@@ -308,9 +316,11 @@ function renderDetail() {
     <dl class="detail-facts"><div><dt>来源名称</dt><dd>${escape(source.publisher || '未知')}</dd></div><div><dt>发布时间</dt><dd>${escape(source.date || '未知')}</dd></div><div><dt>收集时间</dt><dd>${escape(new Date(source.collectedAt).toLocaleString('zh-CN', { hour12: false }))}</dd></div><div><dt>资料状态</dt><dd>${escape(accessDescription)}</dd></div></dl>
     <div class="source-link">${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开来源 ${icon('external')}</a><p class="muted small">${escape(source.url)}</p>` : source.file ? '本地文件 · 未提供外部链接' : '无外部链接（虚构演示资料）'}</div>
     ${issues.length ? `<div class="issue-list">核查提示：${issues.map(escape).join('；')}</div>` : ''}
-    ${source.file ? `<p class="local-file-note">${escape(localFileLabel(source))}</p><details class="local-file-note"><summary>文件指纹（SHA-256）</summary><p>${escape(source.file.sha256)}</p></details>` : ''}${webInfo}${source.note ? `<p class="source-check-note">核查备注：${escape(source.note)}</p>` : ''}${metadataForm}<div class="saved-text-title">保存文本</div><div class="saved-text">${escape(source.text || '没有可用正文，无法纳入报告。')}</div>
+    ${source.library ? `<p class="library-source-note">${escape(librarySourceLabel(source))}</p><p class="library-source-note">检索词：${escape(source.library.query)}<br>检索时间：${escape(libraryDate(source.library.retrievedAt))}</p>` : ''}${source.file ? `<p class="local-file-note">${escape(localFileLabel(source))}</p><details class="local-file-note"><summary>文件指纹（SHA-256）</summary><p>${escape(source.file.sha256)}</p></details>` : ''}${webInfo}${source.note ? `<p class="source-check-note">核查备注：${escape(source.note)}</p>` : ''}${metadataForm}<div class="saved-text-title">${source.library ? '检索片段（非全文）' : '保存文本'}</div><div class="saved-text">${escape(source.text || '没有可用正文，无法纳入报告。')}</div>
     <div class="detail-actions"><button class="button include" id="include-source" ${!source.text.trim() || source.access !== 'available' ? 'disabled' : ''}>${icon('check')}${source.review === 'included' ? '已纳入简报' : '纳入简报'}</button><button class="button secondary" id="exclude-source">${source.review === 'excluded' ? '已排除' : '排除此资料'}</button></div>
-    <div class="detail-foot"><label class="flag-label"><input id="flag-source" type="checkbox" ${source.flagged ? 'checked' : ''}> 标记待核实</label>${source.review !== 'pending' ? '<button id="reset-review" class="link-button">撤销审核</button>' : ''}</div>`;
+    <div class="detail-foot"><label class="flag-label"><input id="flag-source" type="checkbox" ${source.flagged ? 'checked' : ''}> 标记待核实</label>${source.review !== 'pending' ? '<button id="reset-review" class="link-button">撤销审核</button>' : ''}</div>
+    ${!source.demo && !state.task?.demo && !source.library ? `<div class="archive-actions"><button id="archive-source" class="button secondary" ${source.review !== 'included' || !source.text.trim() || source.access !== 'available' || archiveRequests.has(source.id) ? 'disabled' : ''}>${archiveRequests.has(source.id) ? '正在保存…' : '保存到资料库'}</button><p class="field-help">${source.review === 'included' ? '单独保存已审核正文、来源和核查提示，供后续任务复用。' : '先核查并纳入此资料，再保存到资料库。'}</p><p id="archive-error" class="field-error" role="alert"></p></div>` : source.library ? '<p class="field-help library-source-note">此内容为库内原文的检索片段，不重复入库。修改当前审核不影响资料库原记录。</p>' : ''}`;
+  $('#archive-source')?.addEventListener('click', () => archiveSource(source.id));
   $('#include-source').addEventListener('click', () => reviewSource(source.id, 'included'));
   $('#exclude-source').addEventListener('click', () => reviewSource(source.id, 'excluded'));
   $('#reset-review')?.addEventListener('click', () => reviewSource(source.id, 'pending'));
@@ -320,10 +330,13 @@ function renderDetail() {
     const data = Object.fromEntries(new FormData(event.currentTarget));
     for (const key of Object.keys(data)) data[key] = data[key].trim();
     if ((data.date && !isDate(data.date)) || data.publisher.length > 120 || data.note.length > 500) { $('#metadata-error').textContent = '请检查日期格式、来源名称和备注长度。'; return; }
+    const metadataChanged = Object.keys(data).some(key => source[key] !== data[key]) || (source.web && source.web.dateOrigin !== (data.date ? 'reviewed' : 'unknown'));
+    const requiresReview = metadataChanged && source.review === 'included';
     Object.assign(source, data);
     if (source.web) source.web.dateOrigin = data.date ? 'reviewed' : 'unknown';
+    if (requiresReview) source.review = 'pending';
     invalidateReport(); persist(); renderReview();
-    toast('来源信息已保存，简报需重新生成。');
+    toast(requiresReview ? '来源信息已变更，请重新审核纳入后再保存到资料库或生成简报。' : '来源信息已保存，简报需重新生成。');
   });
   $('#flag-source').addEventListener('change', event => {
     source.flagged = event.target.checked;
@@ -342,6 +355,228 @@ function reviewSource(id, status) {
   $(`[data-select-source="${selectedId}"]`)?.focus({ preventScroll: true });
   toast(`${reviewLabel(source)}：${source.title}`);
 }
+
+async function libraryRequest(url, options = {}) {
+  const response = await fetch(url, options);
+  let payload;
+  try { payload = await response.json(); }
+  catch { throw new Error('资料库未返回有效结果，请检查本地服务后重试。'); }
+  if (!response.ok) throw new Error(payload.error || '资料库操作失败，请重试。');
+  return payload;
+}
+
+function libraryPost(url, input) {
+  return libraryRequest(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+}
+
+async function archiveSource(id) {
+  const source = state.sources.find(item => item.id === id);
+  if (!source || source.review !== 'included' || source.demo || state.task?.demo || source.library || !source.text.trim() || source.access !== 'available' || archiveRequests.has(id)) return;
+  const taskId = state.task.id;
+  const input = { task: structuredClone(state.task), source: structuredClone(source) };
+  archiveRequests.add(id);
+  renderDetail();
+  try {
+    const payload = await libraryPost('/api/library/documents', input);
+    if (state.task?.id === taskId) toast(payload.duplicate ? '资料库已有相同版本，无须重复保存。' : `已保存到资料库 · 版本 ${payload.document.version}，核查提示一并保留。`);
+  } catch (error) {
+    if (state.task?.id === taskId && selectedId === id && $('#archive-error')) $('#archive-error').textContent = error.message;
+    else if (state.task?.id === taskId) toast(error.message);
+  } finally {
+    archiveRequests.delete(id);
+    if (state.task?.id === taskId && selectedId === id && $('#archive-source')) {
+      $('#archive-source').disabled = source.review !== 'included';
+      $('#archive-source').textContent = '保存到资料库';
+    }
+  }
+}
+
+function openLibrary(fromSearch = false) {
+  if (currentStep !== 'library') {
+    libraryView.returnStep = currentStep;
+    libraryView.returnFocus = document.activeElement;
+  }
+  libraryView.generation++;
+  libraryView.busy = false;
+  libraryView.adding.clear();
+  libraryView.documents = [];
+  libraryView.results = [];
+  libraryView.selectedResult = null;
+  libraryView.selectedDocument = null;
+  libraryView.panel = 'documents';
+  if (state.task) $('#library-company').value = state.task.company;
+  $('#library-query').value = fromSearch ? state.task?.topic || '' : '';
+  $('#library-start').value = '';
+  $('#library-end').value = '';
+  $('#library-include-flagged').checked = false;
+  $('#library-error').textContent = '';
+  go('library');
+  loadLibraryDocuments();
+  if (fromSearch) $('#library-query').focus();
+}
+
+function closeLibrary() {
+  const step = state.task ? libraryView.returnStep : 'create';
+  const previousFocus = libraryView.returnFocus;
+  go(step === 'library' ? 'create' : step);
+  if (previousFocus?.isConnected && !previousFocus.closest('[hidden]')) previousFocus.focus({ preventScroll: true });
+  else $('#open-library').focus({ preventScroll: true });
+}
+
+function libraryCurrent(generation) { return currentStep === 'library' && generation === libraryView.generation; }
+function normalizedCompany(value) { return value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('zh-CN'); }
+function alreadyAdded(result) { return state.sources.some(source => source.library?.documentId === result.documentId && source.library.version === result.version && source.library.chunkId === result.chunk.id); }
+function resultCanAdd(result) { return !!state.task && !state.task.demo && normalizedCompany(state.task.company) === normalizedCompany(result.company) && state.sources.length < MAX_SOURCES && !alreadyAdded(result); }
+function libraryDate(value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '未知'; }
+
+function renderLibrary() {
+  const resultsMode = libraryView.panel === 'results';
+  $('#library-document-list').hidden = resultsMode;
+  $('#library-results').hidden = !resultsMode;
+  $('#library-documents-tab').classList.toggle('selected', !resultsMode);
+  $('#library-documents-tab').setAttribute('aria-pressed', String(!resultsMode));
+  $('#library-results-tab').classList.toggle('selected', resultsMode);
+  $('#library-results-tab').setAttribute('aria-pressed', String(resultsMode));
+  $('#library-document-count').textContent = libraryView.documents.length;
+  $('#library-result-count').textContent = libraryView.results.length;
+  $('#library-search-button').disabled = libraryView.busy;
+  $('#library-search-button').textContent = libraryView.busy ? '正在检索…' : '检索相关片段';
+  $('#library-task-hint').textContent = !state.task ? '先返回工作台创建研究任务，才能把检索片段加入任务。浏览资料不会创建或替换任务。' : state.task.demo ? '当前为虚构示例任务。请创建正式研究任务后复用库内资料。' : `当前任务：${state.task.company}。检索片段加入后仍为待审核，确认纳入后才用于简报。`;
+  $('#library-document-list').innerHTML = libraryView.documents.length ? libraryView.documents.map(document => `<button class="library-document-item ${libraryView.selectedDocument?.id === document.id && libraryView.selectedResult === null ? 'selected' : ''}" data-library-document="${escape(document.id)}" aria-pressed="${libraryView.selectedDocument?.id === document.id && libraryView.selectedResult === null}"><h3>${escape(document.source.title)}</h3><p>${escape(document.company)} · ${escape(document.source.publisher || '来源未知')}</p><p>发布：${escape(document.source.date || '未知')} · 版本 ${document.version}</p><div class="tags"><span class="tag ${document.status === 'withdrawn' ? '' : 'green'}">${document.status === 'withdrawn' ? '已撤回' : '可检索'}</span>${document.issues?.length ? '<span class="tag orange">待核实</span>' : ''}</div></button>`).join('') : '<div class="empty-state"><h2>暂无库内资料</h2><p>在审核页将已纳入的原文保存到资料库，<br>或修改公司名称后重新查看。</p></div>';
+  $('#library-results').innerHTML = libraryView.results.length ? libraryView.results.map((result, index) => `<div class="library-result-item ${libraryView.selectedResult === index ? 'selected' : ''}"><button class="library-result-preview" data-preview-library-result="${index}" aria-pressed="${libraryView.selectedResult === index}"><h3>${escape(result.title)}</h3><p>${escape(result.publisher || '来源未知')} · ${escape(result.date || '日期未知')} · 版本 ${result.version}</p><p class="library-result-excerpt">${escape(result.chunk.text.slice(0, 180))}${result.chunk.text.length > 180 ? '…' : ''}</p><span class="small muted">片段 ${escape(result.chunk.id)} · 查看片段与入库原文</span>${result.issues?.length ? '<span class="tag orange">待核实</span>' : ''}</button><button class="link-button" data-add-library-result="${index}" ${!resultCanAdd(result) || libraryView.adding.has(index) ? 'disabled' : ''}>${libraryView.adding.has(index) ? '正在加入…' : alreadyAdded(result) ? '已加入当前任务' : '加入任务待审核'}</button></div>`).join('') : '<div class="empty-state"><h2>暂无检索片段</h2><p>填写公司和关键词后检索。<br>没有匹配时可调整关键词、日期或待核实筛选。</p></div>';
+  $$('[data-library-document]').forEach(button => button.addEventListener('click', () => selectLibraryDocument(button.dataset.libraryDocument)));
+  $$('[data-preview-library-result]').forEach(button => button.addEventListener('click', () => { libraryView.selectedResult = Number(button.dataset.previewLibraryResult); libraryView.selectedDocument = null; renderLibrary(); }));
+  $$('[data-add-library-result]').forEach(button => button.addEventListener('click', () => addLibraryResult(Number(button.dataset.addLibraryResult))));
+  renderLibraryDetail();
+}
+
+function renderLibraryDetail() {
+  const result = libraryView.selectedResult === null ? null : libraryView.results[libraryView.selectedResult];
+  const document = result ? { id: result.documentId, company: result.company, version: result.version, source: result.source, issues: result.issues, updatedAt: result.archivedAt } : libraryView.selectedDocument;
+  if (!document) {
+    $('#library-document-detail').innerHTML = '<div class="empty-state"><svg class="empty-icon" aria-hidden="true"><use href="#i-file"/></svg><h2>选择资料，查看依据</h2><p>左侧查看库内资料或检索片段。<br>审核状态、来源和备注与原文一起保留。</p></div>';
+    return;
+  }
+  const source = document.source;
+  $('#library-document-detail').innerHTML = `<div class="detail-top"><span>${result ? '关键词匹配片段' : '入库原文快照'}</span><span>版本 ${document.version}${document.status === 'withdrawn' ? ' · 已撤回' : ''}</span></div><h2>${escape(source.title)}</h2><dl class="detail-facts"><div><dt>公司</dt><dd>${escape(document.company)}</dd></div><div><dt>资料发布日期</dt><dd>${escape(source.date || '未知')}</dd></div><div><dt>来源名称</dt><dd>${escape(source.publisher || '未知')}</dd></div><div><dt>入库更新时间</dt><dd>${escape(libraryDate(document.updatedAt))}</dd></div></dl><div class="source-link">${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开来源 ${icon('external')}</a><p>${escape(source.url)}</p>` : '本地资料 · 未提供外部链接'}</div>${source.file ? `<p class="local-file-note">${escape(localFileLabel(source))}</p><details class="local-file-note"><summary>文件指纹（SHA-256）</summary><p>${escape(source.file.sha256)}</p></details>` : ''}${source.web ? `<p class="local-file-note">DeepSeek Fetch · 原读取时间：${escape(libraryDate(source.web.fetchedAt))} · 原提取 ${source.web.originalChars} 字${source.web.truncated ? ' · 正文已截取' : ''}</p>` : ''}${document.issues?.length ? `<div class="issue-list">入库时核查提示：${document.issues.map(escape).join('；')}</div>` : ''}${source.note ? `<p class="source-check-note">入库核查备注：${escape(source.note)}</p>` : ''}${result ? `<div class="saved-text-title">检索片段（非全文） · 原文字符 ${result.chunk.start + 1}–${result.chunk.end}</div><div class="saved-text library-matched-text">${escape(result.chunk.text)}</div><details class="library-original-text"><summary>查看入库原文（${source.text.length} 字）</summary><div class="saved-text">${escape(source.text)}</div></details><div class="detail-actions"><button class="button secondary" data-add-library-result="${libraryView.selectedResult}" ${!resultCanAdd(result) || libraryView.adding.has(libraryView.selectedResult) ? 'disabled' : ''}>${alreadyAdded(result) ? '已加入当前任务' : libraryView.adding.has(libraryView.selectedResult) ? '正在加入…' : '加入任务待审核'}</button></div><p class="field-help library-source-note">仅加入当前片段；原文版本、位置与核查提示随引用保留。请检查上下文及指标口径。</p>` : `<div class="saved-text-title">入库时保存的正文（${source.text.length} 字）</div><div class="saved-text">${escape(source.text)}</div><div class="detail-actions">${document.status !== 'withdrawn' ? '<button id="withdraw-library-document" class="button secondary">从检索中撤回</button>' : '<p class="field-help">此资料已撤回，不会出现在新的检索结果中。已生成简报的来源快照仍保留。</p>'}</div><p class="field-help library-source-note">入库表示允许复用，不代表事实已被证明。更新正文或核查信息时，请从原资料重新审核并保存新版本。</p>`}<p class="library-record-id">资料库编号：${escape(document.id)}</p>`;
+  $('#library-document-detail [data-add-library-result]')?.addEventListener('click', () => addLibraryResult(libraryView.selectedResult));
+  $('#withdraw-library-document')?.addEventListener('click', () => confirmAction('从检索中撤回此资料？', '撤回后不再用于新的检索。原文记录与既有简报引用保留；已加入任务的片段请在任务中重新核查。', () => withdrawLibraryDocument(document), '确认撤回'));
+}
+
+async function loadLibraryDocuments() {
+  const generation = libraryView.generation;
+  const request = ++libraryView.listRequest;
+  $('#library-status').textContent = '正在读取本机资料库…';
+  $('#library-error').textContent = '';
+  try {
+    const company = $('#library-company').value.trim();
+    const payload = await libraryRequest(`/api/library/documents${company ? `?company=${encodeURIComponent(company)}` : ''}`);
+    if (!libraryCurrent(generation) || request !== libraryView.listRequest) return;
+    libraryView.documents = payload.documents;
+    if (libraryView.selectedDocument) libraryView.selectedDocument = payload.documents.find(item => item.id === libraryView.selectedDocument.id) || null;
+    $('#library-status').textContent = `库内共 ${payload.documents.length} 条资料${company ? ` · 公司：${company}` : ''}。待核实资料默认不参与检索。`;
+    renderLibrary();
+  } catch (error) {
+    if (libraryCurrent(generation) && request === libraryView.listRequest) { $('#library-status').textContent = '资料库暂时不可用，当前任务未改动。'; $('#library-error').textContent = error.message; }
+  }
+}
+
+async function selectLibraryDocument(id) {
+  const generation = libraryView.generation;
+  const request = ++libraryView.listRequest;
+  $('#library-error').textContent = '';
+  try {
+    const payload = await libraryRequest(`/api/library/documents/${encodeURIComponent(id)}`);
+    if (!libraryCurrent(generation) || request !== libraryView.listRequest) return;
+    libraryView.selectedDocument = payload.document;
+    libraryView.selectedResult = null;
+    renderLibrary();
+  } catch (error) { if (libraryCurrent(generation) && request === libraryView.listRequest) $('#library-error').textContent = error.message; }
+}
+
+async function searchLibrary(event) {
+  event.preventDefault();
+  if (libraryView.busy) return;
+  const query = $('#library-query').value.trim();
+  const company = $('#library-company').value.trim();
+  const start = $('#library-start').value;
+  const end = $('#library-end').value;
+  $('#library-error').textContent = '';
+  if (!company || !query) { $('#library-error').textContent = '请填写公司名称和需要查找的关键词。'; return (!company ? $('#library-company') : $('#library-query')).focus(); }
+  if ((start && !isDate(start)) || (end && !isDate(end)) || (start && end && start > end)) { $('#library-error').textContent = '请检查发布日期范围，起始日期不能晚于结束日期。'; return; }
+  const generation = libraryView.generation;
+  const taskId = state.task?.id;
+  const request = ++libraryView.searchRequest;
+  libraryView.busy = true;
+  libraryView.results = [];
+  libraryView.selectedResult = null;
+  libraryView.adding.clear();
+  $('#library-status').textContent = '正在按关键词检索已保存正文…';
+  renderLibrary();
+  try {
+    const payload = await libraryPost('/api/library/search', { company, query, ...(start ? { start } : {}), ...(end ? { end } : {}), includeFlagged: $('#library-include-flagged').checked, limit: 8 });
+    if (!libraryCurrent(generation) || taskId !== state.task?.id || request !== libraryView.searchRequest) return;
+    libraryView.results = payload.results;
+    libraryView.query = query;
+    libraryView.panel = 'results';
+    libraryView.selectedDocument = null;
+    libraryView.selectedResult = payload.results.length ? 0 : null;
+    $('#library-status').textContent = payload.results.length ? `找到 ${payload.results.length} 个相关片段 · 关键词检索；请结合入库原文核查上下文。` : '没有匹配片段。可调整关键词、发布日期或待核实筛选；系统不会补写缺失资料。';
+  } catch (error) {
+    if (libraryCurrent(generation) && request === libraryView.searchRequest) { $('#library-error').textContent = error.message; $('#library-status').textContent = '检索未完成，原有任务和资料未改动。'; }
+  } finally {
+    if (libraryCurrent(generation) && request === libraryView.searchRequest) { libraryView.busy = false; renderLibrary(); }
+  }
+}
+
+async function addLibraryResult(index) {
+  const result = libraryView.results[index];
+  if (!result || libraryView.adding.has(index)) return;
+  $('#library-error').textContent = '';
+  if (!resultCanAdd(result)) { $('#library-error').textContent = alreadyAdded(result) ? '当前任务已有此版本的相同片段。' : state.sources.length >= MAX_SOURCES ? `单次研究最多 ${MAX_SOURCES} 条资料。` : '请先创建同公司的正式研究任务，再加入检索片段。'; return; }
+  const generation = libraryView.generation;
+  const taskId = state.task.id;
+  const searchRequest = libraryView.searchRequest;
+  const query = libraryView.query;
+  libraryView.adding.add(index);
+  renderLibrary();
+  try {
+    const payload = await libraryPost('/api/library/retrieve', { documentId: result.documentId, version: result.version, chunkId: result.chunk.id, query });
+    if (!libraryCurrent(generation) || state.task?.id !== taskId || searchRequest !== libraryView.searchRequest) return;
+    if (!resultCanAdd(payload.result)) throw new Error('任务已有此片段、公司不匹配或资料数量已达上限，请重新检查。');
+    const source = libraryResultSource(payload.result, query);
+    validateSources([...state.sources, source]);
+    state.sources.push(source);
+    selectedId = source.id;
+    filter = 'all';
+    invalidateReport(); persist();
+    $('#library-status').textContent = '片段已加入当前任务，状态为待审核。返回工作台后核查并纳入。';
+    toast('已加入任务待审核，尚未用于简报。');
+  } catch (error) { if (libraryCurrent(generation) && state.task?.id === taskId && searchRequest === libraryView.searchRequest) $('#library-error').textContent = error.message; }
+  finally { if (libraryCurrent(generation) && searchRequest === libraryView.searchRequest) { libraryView.adding.delete(index); renderLibrary(); } }
+}
+
+async function withdrawLibraryDocument(document) {
+  const generation = libraryView.generation;
+  $('#library-error').textContent = '';
+  try {
+    await libraryPost(`/api/library/documents/${encodeURIComponent(document.id)}/withdraw`, { version: document.version });
+    if (!libraryCurrent(generation)) return;
+    libraryView.results = libraryView.results.filter(item => item.documentId !== document.id);
+    libraryView.selectedResult = null;
+    await loadLibraryDocuments();
+    if (libraryCurrent(generation)) toast('资料已从检索中撤回，原文记录与既有简报保留。');
+  } catch (error) { if (libraryCurrent(generation)) $('#library-error').textContent = error.message; }
+}
+
+$('#open-library').addEventListener('click', () => openLibrary());
+$('#search-library').addEventListener('click', () => openLibrary(true));
+$('#close-library').addEventListener('click', closeLibrary);
+$('#library-search-form').addEventListener('submit', searchLibrary);
+$('#refresh-library-list').addEventListener('click', () => { libraryView.panel = 'documents'; libraryView.selectedResult = null; renderLibrary(); loadLibraryDocuments(); });
+$('#library-documents-tab').addEventListener('click', () => { libraryView.panel = 'documents'; libraryView.selectedResult = null; renderLibrary(); });
+$('#library-results-tab').addEventListener('click', () => { libraryView.panel = 'results'; libraryView.selectedDocument = null; libraryView.selectedResult = libraryView.results.length ? 0 : null; renderLibrary(); });
+$('#view-library').addEventListener('keydown', event => { if (event.key === 'Escape' && !document.querySelector('dialog[open]')) { event.preventDefault(); closeLibrary(); } });
 
 function updateReportHint() {
   const count = eligibleSources(state.sources).length;
@@ -362,7 +597,7 @@ function renderReport() {
     const number = report.sources.find(source => source.id === id)?.sourceNumber;
     return `<a class="citation" href="#report-source-${number}" aria-label="查看来源 ${number}">[资料 ${number}]</a>`;
   };
-  $('#report-body').innerHTML = `<div class="report-document"><div class="report-doc-header"><h2>${escape(report.task.company)}</h2><div class="doc-title">企业研究简报</div><p>研究范围：${report.task.start} — ${report.task.end}<br>关注主题：${escape(report.task.topic)}<br>生成方式：${report.mode === 'deepseek' ? 'DeepSeek 辅助整理 · 待人工核查' : '规则摘录 · 未调用模型'}<br>生成时间：${escape(new Date(report.generatedAt).toLocaleString('zh-CN', { hour12: false }))}</p></div><h3>主题概述</h3>${report.claims.map(claim => `<p class="claim">${escape(claim.text)} ${claim.sourceIds.map(citation).join('')}</p>${claimSourceWarnings(report, claim).length ? `<p class="claim-source-warning">${claimSourceWarnings(report, claim).map(escape).join('；')}。核查备注见对应引用来源。</p>` : ''}`).join('')}<h3>资料时间线 <span class="muted small">（按发布日期）</span></h3>${[...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).map(source => `<div class="timeline-row"><span class="timeline-date">${source.date || '日期未知'}</span><div>${escape(source.title)} ${citation(source.id)}</div></div>`).join('')}<h3>信息缺口与待核实事项</h3><div class="report-gap"><ul>${report.gaps.map(gap => `<li>${escape(gap)}</li>`).join('')}</ul></div><h3>引用来源 <span class="muted small">（${report.sources.length} 条）</span></h3>${report.sources.map((source, index) => `<div id="report-source-${source.sourceNumber}" class="report-source" tabindex="-1"><strong>[资料 ${source.sourceNumber}] ${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')} · 发布：${source.date || '未知'} · 录入：${escape(source.collectedAt)}</p><p>${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开原文</a>` : source.file ? '本地文件 · 未提供外部链接' : '无外部链接 · 虚构演示资料'}</p>${source.file ? `<p>${escape(localFileLabel(source))}</p>` : ''}${source.web ? `<p>DeepSeek Fetch · 读取：${escape(source.web.fetchedAt)} · 保存 ${source.text.length} / 提取 ${source.web.originalChars} 字${source.web.truncated ? ' · 正文已截取' : ''}</p>` : ''}${source.note ? `<p>核查备注：${escape(source.note)}</p>` : ''}<details><summary>查看纳入时保存的文本</summary><div class="saved-text">${escape(source.text)}</div></details></div>`).join('')}</div>`;
+  $('#report-body').innerHTML = `<div class="report-document"><div class="report-doc-header"><h2>${escape(report.task.company)}</h2><div class="doc-title">企业研究简报</div><p>研究范围：${report.task.start} — ${report.task.end}<br>关注主题：${escape(report.task.topic)}<br>生成方式：${report.mode === 'deepseek' ? 'DeepSeek 辅助整理 · 待人工核查' : '规则摘录 · 未调用模型'}<br>生成时间：${escape(new Date(report.generatedAt).toLocaleString('zh-CN', { hour12: false }))}</p></div><h3>主题概述</h3>${report.claims.map(claim => `<p class="claim">${escape(claim.text)} ${claim.sourceIds.map(citation).join('')}</p>${claimSourceWarnings(report, claim).length ? `<p class="claim-source-warning">${claimSourceWarnings(report, claim).map(escape).join('；')}。核查备注见对应引用来源。</p>` : ''}`).join('')}<h3>资料时间线 <span class="muted small">（按发布日期）</span></h3>${[...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).map(source => `<div class="timeline-row"><span class="timeline-date">${source.date || '日期未知'}</span><div>${escape(source.title)} ${citation(source.id)}</div></div>`).join('')}<h3>信息缺口与待核实事项</h3><div class="report-gap"><ul>${report.gaps.map(gap => `<li>${escape(gap)}</li>`).join('')}</ul></div><h3>引用来源 <span class="muted small">（${report.sources.length} 条）</span></h3>${report.sources.map((source, index) => `<div id="report-source-${source.sourceNumber}" class="report-source" tabindex="-1"><strong>[资料 ${source.sourceNumber}] ${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')} · 发布：${source.date || '未知'} · 录入：${escape(source.collectedAt)}</p><p>${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开原文</a>` : source.file ? '本地文件 · 未提供外部链接' : '无外部链接 · 虚构演示资料'}</p>${source.library ? `<p>资料库检索片段（非全文） · ${escape(librarySourceLabel(source))}</p><p>检索词：${escape(source.library.query)}<br>检索时间：${escape(libraryDate(source.library.retrievedAt))}</p>` : ''}${source.file ? `<p>${escape(localFileLabel(source))}</p>` : ''}${source.web ? `<p>DeepSeek Fetch · 读取：${escape(source.web.fetchedAt)} · 保存 ${source.text.length} / 提取 ${source.web.originalChars} 字${source.web.truncated ? ' · 正文已截取' : ''}</p>` : ''}${source.note ? `<p>核查备注：${escape(source.note)}</p>` : ''}<details><summary>查看纳入时保存的文本</summary><div class="saved-text">${escape(source.text)}</div></details></div>`).join('')}</div>`;
 }
 
 function releaseLocalFile() {
