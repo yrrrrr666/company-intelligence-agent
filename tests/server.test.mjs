@@ -15,6 +15,7 @@ let lastProviderRequest;
 let mockFailure;
 let webResponse;
 let webGate;
+let modelGate;
 
 before(async () => {
   globalThis.fetch = async (url, options) => {
@@ -28,6 +29,7 @@ before(async () => {
       providerCalls++;
       lastProviderRequest = JSON.parse(options.body);
       if (mockFailure) throw mockFailure;
+      if (modelGate) await modelGate;
       return new Response(JSON.stringify(mockResponse), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     return nativeFetch(url, options);
@@ -213,4 +215,79 @@ test('simultaneous incomplete request bodies cannot bypass the research concurre
     server.off('request', observe);
     for (const req of requests) req.destroy();
   }
+});
+
+test('simultaneous incomplete report bodies trigger only one model call and release the lock', { timeout: 5000 }, async () => {
+  const input = demoWorkspace();
+  input.sources[0].review = 'included';
+  const body = JSON.stringify(input);
+  mockResponse = { choices: [{ message: { content: JSON.stringify({ claims: [{ text: '虚构回归摘要', sourceIds: ['demo-1'] }] }) } }] };
+  let release;
+  modelGate = new Promise(resolve => { release = resolve; });
+  const beforeCalls = providerCalls;
+  let observed = 0;
+  let headersSeen;
+  const allHeaders = new Promise(resolve => { headersSeen = resolve; });
+  const observe = req => { if (req.url === '/api/report' && ++observed === 2) headersSeen(); };
+  server.on('request', observe);
+  const requests = [];
+  const responses = [];
+  try {
+    for (let index = 0; index < 2; index++) {
+      responses.push(new Promise((resolve, reject) => {
+        const req = httpRequest(`${base}/api/report`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' } }, res => {
+          res.resume();
+          res.on('end', () => resolve(res.statusCode));
+        });
+        req.on('error', reject);
+        req.write(body.slice(0, 10));
+        requests.push(req);
+      }));
+    }
+    await allHeaders;
+    for (const req of requests) req.end(body.slice(10));
+    // A missing second guard leaves both calls waiting on the provider gate.
+    const first = await Promise.race([...responses, new Promise(resolve => setTimeout(() => resolve('no rejection'), 500))]);
+    release();
+    const statuses = await Promise.all(responses);
+    assert.equal(first, 429);
+    assert.equal(providerCalls - beforeCalls, 1);
+    assert.deepEqual(statuses.sort(), [200, 429]);
+    const retry = await fetch(`${base}/api/report`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body });
+    assert.equal(retry.status, 200);
+    assert.equal(providerCalls - beforeCalls, 2);
+  } finally {
+    release();
+    modelGate = null;
+    server.off('request', observe);
+    for (const req of requests) req.destroy();
+  }
+});
+
+test('oversized JSON bodies return a distinct capacity error without calling providers', async () => {
+  const beforeCalls = providerCalls;
+  const body = JSON.stringify({ padding: 'x'.repeat(700000) });
+  for (const route of ['/api/report', '/api/search', '/api/read', '/api/library/documents']) {
+    const response = await fetch(`${base}${route}`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body });
+    assert.equal(response.status, 413, route);
+    const payload = await response.json();
+    assert.equal(payload.code, 'REQUEST_TOO_LARGE');
+    assert.match(payload.error, /过大/);
+  }
+  assert.equal(providerCalls, beforeCalls);
+});
+
+test('model text budget accepts 80000 characters and rejects 80001 before provider calls', async () => {
+  const input = demoWorkspace();
+  input.sources = Array.from({ length: 7 }, (_, index) => ({ ...input.sources[0], id: `budget-${index}`, review: 'included', text: '字'.repeat(index < 6 ? 12000 : 8000) }));
+  mockResponse = { choices: [{ message: { content: JSON.stringify({ claims: [{ text: '虚构预算边界', sourceIds: ['budget-0'] }] }) } }] };
+  const post = () => fetch(`${base}/api/report`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+  const beforeCalls = providerCalls;
+  assert.equal((await post()).status, 200);
+  assert.equal(providerCalls - beforeCalls, 1);
+  input.sources[6].text += '字';
+  const rejected = await post();
+  assert.equal(rejected.status, 400);
+  assert.match((await rejected.json()).error, /80000/);
+  assert.equal(providerCalls - beforeCalls, 1);
 });

@@ -181,6 +181,57 @@ const base = 'http://127.0.0.1:4175';
     await page.locator('[data-select-source=demo-1]').click();
     assert.match(await page.locator('#source-detail').innerText(), /已纳入/);
 
+    // A valid workspace can exceed the request budget because of excluded/pending
+    // evidence. Send only approved text while retaining original citation numbers.
+    await page.unroute('**/api/report');
+    await page.evaluate(() => {
+      const key = 'company-intelligence:current-task:v1';
+      const saved = JSON.parse(localStorage.getItem(key));
+      const template = saved.sources[0];
+      saved.task = { ...saved.task, company: '请求回归公司（合成测试）', demo: false };
+      saved.sources = Array.from({ length: 20 }, (_, index) => ({ ...template, id: `request-${index}`, title: `合成资料 ${index + 1}`, text: '字'.repeat(12000), review: index === 17 ? 'included' : index % 2 ? 'pending' : 'excluded', demo: false }));
+      const body = JSON.stringify(saved);
+      if (new TextEncoder().encode(body).byteLength <= 700000) throw new Error('Large-workspace fixture is too small');
+      localStorage.setItem(key, body);
+    });
+    let reportRequests = 0;
+    await page.route('**/api/report', async route => {
+      reportRequests++;
+      const input = route.request().postDataJSON();
+      assert.equal(input.sources.length, 1);
+      assert.equal(input.sources[0].id, 'request-17');
+      assert.equal(input.sources[0].text, '字'.repeat(12000));
+      assert(Buffer.byteLength(route.request().postData()) < 700000);
+      await route.fulfill({ json: { claims: [{ text: '【合成测试】仅根据纳入资料整理', sourceIds: ['request-17'] }] } });
+    });
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#model-status').textContent.includes('test-model'));
+    await page.locator('#to-report').click();
+    await page.locator('#report-mode').selectOption('deepseek');
+    await page.locator('#generate-report').click();
+    await page.waitForFunction(() => document.querySelector('.claim')?.textContent.includes('仅根据纳入资料'));
+    assert.equal(reportRequests, 1);
+    assert.equal(await page.locator('#report-source-18').count(), 1);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('company-intelligence:current-task:v1')).sources.length), 20);
+    assert.match(await page.locator('#report-body').innerText(), /尚未审核/);
+
+    // Oversized approved text must fail before a paid request and remain reviewable.
+    await page.evaluate(() => {
+      const key = 'company-intelligence:current-task:v1';
+      const saved = JSON.parse(localStorage.getItem(key));
+      saved.sources.forEach((source, index) => { source.review = index < 7 ? 'included' : 'excluded'; });
+      localStorage.setItem(key, JSON.stringify(saved));
+    });
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#model-status').textContent.includes('test-model'));
+    await page.locator('#to-report').click();
+    await page.locator('#report-mode').selectOption('deepseek');
+    await page.locator('#generate-report').click();
+    await page.waitForFunction(() => document.querySelector('#report-error').textContent.includes('80000'));
+    assert.equal(reportRequests, 1);
+    assert.equal(await page.locator('#generate-report').isEnabled(), true);
+    assert.equal(await page.locator('#export-report').isDisabled(), true);
+
     const freshContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
     const freshPage = await freshContext.newPage();
     freshPage.on('pageerror', error => errors.push(error.message));
@@ -197,7 +248,7 @@ const base = 'http://127.0.0.1:4175';
     assert.equal(await freshPage.locator('#demo-sidebar').isVisible(), false);
     await runImportChecks(browser, base, root, errors);
     assert.deepEqual(errors, []);
-    console.log('PASS: desktop task validation, manual sources, unsafe input, review, citation/export, reload recovery, example sidebar, local PDF/TXT/Markdown import, keyboard focus, replacement confirmation, 1120/1280/1440 layouts and no page errors. No real API calls.');
+    console.log('PASS: desktop task validation, manual sources, unsafe input, review, citation/export, reload recovery, example sidebar, local PDF/TXT/Markdown import, approved-only report requests and capacity checks, keyboard focus, replacement confirmation, 1120/1280/1440 layouts and no page errors. No real API calls.');
     await freshContext.close();
     await context.close();
   } finally {

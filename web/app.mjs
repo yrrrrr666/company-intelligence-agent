@@ -1,4 +1,4 @@
-import { STORAGE_KEY, MAX_SOURCES, validateTask, isDate, safeUrl, sourceIssues, eligibleSources, validateSources, validateModelClaims, createReport, reportMarkdown, demoWorkspace, localFileLabel, publicWebUrl, normalizeUrl, researchQuery, claimSourceWarnings } from './core.mjs';
+import { STORAGE_KEY, MAX_SOURCES, MAX_REPORT_TEXT, validateTask, isDate, safeUrl, sourceIssues, eligibleSources, validateSources, validateModelClaims, createReport, reportMarkdown, demoWorkspace, localFileLabel, publicWebUrl, normalizeUrl, researchQuery, claimSourceWarnings } from './core.mjs';
 import { checkLocalFile, openLocalFile, extractLocalText, validatePageRange, MAX_PDF_PAGES } from './import.mjs';
 import { mergeSearchCandidates, saveWebText } from './research.mjs';
 import { libraryResultSource } from './library.mjs';
@@ -848,17 +848,19 @@ $('#report-mode').addEventListener('change', updateReportHint);
 $('#generate-report').addEventListener('click', async () => {
   $('#report-error').textContent = '';
   try {
-    if (!eligibleSources(state.sources).length) throw new Error('请先纳入至少一条有正文的资料');
+    const selected = eligibleSources(state.sources);
+    if (!selected.length) throw new Error('请先纳入至少一条有正文的资料');
     let claims = null;
     if ($('#report-mode').value === 'deepseek') {
       if (!modelAvailable) throw new Error('尚未配置 DeepSeek，请先使用规则摘录');
+      if (selected.reduce((sum, source) => sum + source.text.length, 0) > MAX_REPORT_TEXT) throw new Error(`纳入正文总量超过 ${MAX_REPORT_TEXT} 字，请减少资料后重试`);
       const controller = new AbortController();
       requestController = controller;
       $('#generate-report').disabled = true;
       $('#generate-report').textContent = '正在整理…';
       $('#export-report').disabled = true;
       try {
-        const response = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task: state.task, sources: state.sources }), signal: controller.signal });
+        const response = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task: state.task, sources: selected }), signal: controller.signal });
         const payload = await response.json();
         if (requestController !== controller) return;
         if (!response.ok) throw new Error(payload.error || '生成失败，请重试');

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { request as httpRequest } from 'node:http';
 
 const dir = await mkdtemp(path.join(os.tmpdir(), 'intelligence-library-api-'));
 process.env.LIBRARY_PATH = path.join(dir, 'library.json');
@@ -48,4 +49,48 @@ test('library API saves, searches, checks stale retrieval and withdraws without 
   assert.equal((await stale.json()).code, 'LIBRARY_STALE_VERSION');
   assert.equal((await (await post('/api/library/search', { company: task.company, query: '汽车交付' })).json()).results.length, 0);
   assert.equal(result.source.text, source.text);
+});
+
+test('split UTF-8 characters reach the library unchanged and survive reload', async () => {
+  const evidence = { ...source, id: 'split-utf8', url: 'https://example.com/split-utf8', text: '企业数据不可损坏 🚗' };
+  const body = Buffer.from(JSON.stringify({ task, source: evidence }));
+  // Split both a three-byte Chinese character and a four-byte emoji.
+  const cuts = [body.indexOf(Buffer.from('企业数据')) + 1, body.indexOf(Buffer.from('🚗')) + 2, body.length];
+  let firstChunkSeen;
+  const consumed = new Promise(resolve => { firstChunkSeen = resolve; });
+  const observe = incoming => incoming.once('data', () => setImmediate(firstChunkSeen));
+  server.once('request', observe);
+  let req;
+  const response = new Promise((resolve, reject) => {
+    req = httpRequest(`${base}/api/library/documents`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' } }, res => {
+      let text = '';
+      res.setEncoding('utf8');
+      res.on('data', chunk => { text += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, payload: JSON.parse(text) }));
+    });
+    req.on('error', reject);
+  });
+  try {
+    req.write(body.subarray(0, cuts[0]));
+    await consumed;
+    req.write(body.subarray(cuts[0], cuts[1]));
+    await new Promise(resolve => setTimeout(resolve, 10));
+    req.end(body.subarray(cuts[1]));
+    const saved = await response;
+    assert.equal(saved.status, 200);
+    assert.equal(saved.payload.document.source.text, evidence.text);
+    const reloaded = await (await fetch(`${base}/api/library/documents/${saved.payload.document.id}`)).json();
+    assert.equal(reloaded.document.source.text, evidence.text);
+  } finally { req.destroy(); server.off('request', observe); }
+});
+
+test('invalid UTF-8 is rejected without saving replacement characters', async () => {
+  const before = await (await fetch(`${base}/api/library/documents`)).json();
+  const body = Buffer.from(JSON.stringify({ task, source: { ...source, id: 'invalid-utf8', text: '企业' } }));
+  body[body.indexOf(Buffer.from('企业'))] = 0xff;
+  const response = await fetch(`${base}/api/library/documents`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body });
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).code, 'LIBRARY_INVALID_INPUT');
+  const after = await (await fetch(`${base}/api/library/documents`)).json();
+  assert.deepEqual(after, before);
 });

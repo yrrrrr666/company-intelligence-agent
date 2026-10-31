@@ -3,6 +3,7 @@ import { retrievalPreview } from './retrieval.mjs';
 export const STORAGE_KEY = 'company-intelligence:current-task:v1';
 export const MAX_SOURCES = 40;
 export const MAX_TEXT = 12000;
+export const MAX_REPORT_TEXT = 80000;
 
 export function validateTask(input) {
   if (!input || typeof input !== 'object') input = {};

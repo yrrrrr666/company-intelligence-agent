@@ -2,7 +2,7 @@ import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { validateTask, validateSources, eligibleSources, validateModelClaims, publicWebUrl, researchQuery } from '../web/core.mjs';
+import { MAX_REPORT_TEXT, validateTask, validateSources, eligibleSources, validateModelClaims, publicWebUrl, researchQuery } from '../web/core.mjs';
 import { searchWeb, readWebPage, ResearchError, SEARCH_LIMIT } from './web-research.mjs';
 import { LibraryStore, LibraryError } from './library.mjs';
 
@@ -30,14 +30,24 @@ function json(res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
+class RequestBodyTooLargeError extends Error {}
+
+function jsonInputError(res, error, fallback) {
+  if (error instanceof RequestBodyTooLargeError) return json(res, 413, { code: 'REQUEST_TOO_LARGE', error: '提交内容过大，请减少资料或缩短输入后重试。' });
+  return json(res, 400, fallback);
+}
+
 async function readJson(req) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw new Error('请使用 JSON 提交');
-  let body = '';
+  const chunks = [];
+  let size = 0;
   for await (const chunk of req) {
-    body += chunk;
-    if (Buffer.byteLength(body) > 700000) throw new Error('请求内容过大');
+    size += chunk.byteLength;
+    if (size > 700000) throw new RequestBodyTooLargeError();
+    chunks.push(chunk);
   }
-  return JSON.parse(body);
+  // Decode once so characters split across network chunks retain their exact bytes.
+  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks, size)));
 }
 
 let modelBusy = false;
@@ -68,7 +78,7 @@ export const server = http.createServer(async (req, res) => {
       if (req.method === 'POST') {
         let input;
         try { input = await readJson(req); }
-        catch { return json(res, 400, { code: 'LIBRARY_INVALID_INPUT', error: '请求格式无效，请检查后重试。' }); }
+        catch (error) { return jsonInputError(res, error, { code: 'LIBRARY_INVALID_INPUT', error: '请求格式无效，请检查后重试。' }); }
         if (pathname === '/api/library/documents') return json(res, 200, await library.save(input));
         if (pathname === '/api/library/search') return json(res, 200, await library.search(input));
         if (pathname === '/api/library/retrieve') return json(res, 200, await library.retrieve(input));
@@ -85,7 +95,7 @@ export const server = http.createServer(async (req, res) => {
     if (researchBusy >= 2) return json(res, 429, { error: '已有资料收集请求正在处理，请稍后重试。' });
     let input;
     try { input = await readJson(req); }
-    catch { return json(res, 400, { error: '请求格式无效，请检查后重试。' }); }
+    catch (error) { return jsonInputError(res, error, { error: '请求格式无效，请检查后重试。' }); }
     let query;
     if (pathname === '/api/search') {
       if (Object.keys(validateTask(input?.task || {})).length) return json(res, 400, { error: '研究范围无效，请先创建研究任务。' });
@@ -118,11 +128,13 @@ export const server = http.createServer(async (req, res) => {
       if (Object.keys(validateTask(input.task || {})).length) throw new Error('研究范围无效');
       validateSources(input.sources);
       if (!eligibleSources(input.sources).length) throw new Error('没有可纳入的资料正文');
-    } catch (error) { return json(res, 400, { error: error.message === 'Unexpected end of JSON input' ? '请求格式无效' : '研究范围或资料格式无效，请检查后重试' }); }
+    } catch (error) { return jsonInputError(res, error, { error: error.message === 'Unexpected end of JSON input' ? '请求格式无效' : '研究范围或资料格式无效，请检查后重试' }); }
+    // Body uploads can overlap even though both requests passed the first check.
+    if (modelBusy) return json(res, 429, { error: '已有简报正在生成，请稍后重试' });
     modelBusy = true;
     try {
       const selected = eligibleSources(input.sources);
-      if (selected.reduce((sum, source) => sum + source.text.length, 0) > 80000) return json(res, 400, { error: '纳入正文总量超过 80000 字，请减少资料后重试' });
+      if (selected.reduce((sum, source) => sum + source.text.length, 0) > MAX_REPORT_TEXT) return json(res, 400, { error: `纳入正文总量超过 ${MAX_REPORT_TEXT} 字，请减少资料后重试` });
       const response = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
