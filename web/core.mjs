@@ -183,6 +183,13 @@ export function librarySourceLabel(source) {
   return `资料库：${library.company} · 文档 ${library.documentId} · 版本 ${library.version} · 片段 ${library.chunkId} · 字符 ${library.start + 1}–${library.end} / ${library.originalLength}（检索片段，非全文；字符位置按保存文本计）`;
 }
 
+// Coverage is recorded by the reviewer; links do not prove factual support.
+export function coverageStatus(item) {
+  if (!item.sourceId) return '未关联资料，待查找';
+  if (!Number.isInteger(item.claimIndex)) return '已关联资料，报告待补充';
+  return '已关联资料与结论，待核实';
+}
+
 export function reportMarkdown(report) {
   const md = markdownText;
   const number = id => report.sources.find(source => source.id === id)?.sourceNumber;
@@ -194,6 +201,9 @@ export function reportMarkdown(report) {
   }
   lines.push('', '## 资料时间线（按发布日期）', '');
   for (const source of [...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))) lines.push(`- ${source.date || '日期未知'}：${md(source.title)} ${ref(source.id)}`);
+  lines.push('', '## 研究覆盖检查（人工标注）', '', '关联不代表事实或完整性已验证，请核对原文。');
+  for (const item of report.coverage || []) lines.push(`- ${md(item.label)}：${coverageStatus(item)}${item.sourceId ? `；${ref(item.sourceId)}` : ''}${Number.isInteger(item.claimIndex) ? `；结论 ${item.claimIndex + 1}` : ''}`);
+  if (!report.coverage?.length) lines.push('尚未添加检查项。');
   lines.push('', '## 信息缺口与待核实事项', '', ...report.gaps.map(gap => `- ${md(gap)}`), '', '## 引用来源', '');
   report.sources.forEach((source, index) => {
     lines.push(`<a id="source-${source.sourceNumber}"></a>`, `### 来源 ${source.sourceNumber}：${md(source.title)}`, '', `来源名称：${md(source.publisher || '未知')}  `, `发布时间：${source.date || '未知'}  `, `采集时间：${source.collectedAt}  `, `链接：${source.url ? `[打开原文](${encodeURI(source.url).replace(/\(/g, '%28').replace(/\)/g, '%29')})` : source.file ? '本地文件，未提供外部链接' : '无外部链接（虚构演示或手动录入）'}`, ...(source.file ? [md(localFileLabel(source)), `SHA-256：${source.file.sha256}`, '保存文本可能经人工编辑，请核查原文件。'] : []), ...(source.note ? [`核查备注：${md(source.note)}`, ''] : []), '保存文本：', '', ...source.text.split(/\r?\n/).map(line => `> ${md(line)}`), '');

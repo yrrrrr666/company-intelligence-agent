@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateTask, isDate, normalizeUrl, safeUrl, sourceIssues, validateSources, validateModelClaims, createReport, reportMarkdown, demoWorkspace } from '../web/core.mjs';
+import { validateTask, isDate, normalizeUrl, safeUrl, sourceIssues, validateSources, validateModelClaims, createReport, reportMarkdown, coverageStatus, demoWorkspace } from '../web/core.mjs';
 
 test('task validates required fields, calendar dates and reversed range', () => {
   assert.equal(Object.keys(validateTask({})).length, 4);
@@ -84,4 +84,23 @@ test('export escapes untrusted Markdown and URL delimiters', () => {
   assert(markdown.includes('\\[injection\\]'));
   assert(markdown.includes('path%28test%29'));
   assert(!/(?<!\\)<img/.test(markdown));
+});
+
+
+test('manual coverage distinguishes a missing source from a report omission and exports links', () => {
+  const { task, sources } = demoWorkspace();
+  sources[0].review = 'included';
+  const report = createReport(task, sources);
+  report.coverage = [
+    { label: '一季度销售网络', sourceId: report.sources[0].id, claimIndex: null },
+    { label: '经营利润', sourceId: '', claimIndex: null },
+    { label: '已有结论', sourceId: report.sources[0].id, claimIndex: 0 }
+  ];
+  assert.equal(coverageStatus(report.coverage[0]), '已关联资料，报告待补充');
+  assert.equal(coverageStatus(report.coverage[1]), '未关联资料，待查找');
+  assert.equal(coverageStatus(report.coverage[2]), '已关联资料与结论，待核实');
+  const md = reportMarkdown(report);
+  assert.match(md, /一季度销售网络：已关联资料，报告待补充/);
+  assert.match(md, /\[来源 1\]\(#source-1\)/);
+  assert.match(md, /已有结论：已关联资料与结论，待核实.*结论 1/);
 });

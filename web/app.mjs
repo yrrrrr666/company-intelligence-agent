@@ -1,4 +1,4 @@
-import { STORAGE_KEY, MAX_SOURCES, MAX_REPORT_TEXT, validateTask, isDate, safeUrl, sourceIssues, eligibleSources, validateSources, validateModelClaims, createReport, reportMarkdown, demoWorkspace, localFileLabel, publicWebUrl, normalizeUrl, researchQuery, claimSourceWarnings } from './core.mjs';
+import { STORAGE_KEY, MAX_SOURCES, MAX_REPORT_TEXT, validateTask, isDate, safeUrl, sourceIssues, eligibleSources, validateSources, validateModelClaims, createReport, reportMarkdown, demoWorkspace, localFileLabel, publicWebUrl, normalizeUrl, researchQuery, claimSourceWarnings, coverageStatus } from './core.mjs';
 import { checkLocalFile, openLocalFile, extractLocalText, validatePageRange, MAX_PDF_PAGES } from './import.mjs';
 import { mergeSearchCandidates, saveWebText } from './research.mjs';
 import { libraryResultSource } from './library.mjs';
@@ -629,7 +629,9 @@ function renderReport() {
     const number = report.sources.find(source => source.id === id)?.sourceNumber;
     return `<a class="citation" href="#report-source-${number}" aria-label="查看来源 ${number}">[资料 ${number}]</a>`;
   };
-  $('#report-body').innerHTML = `<div class="report-document"><div class="report-doc-header"><h2>${escape(report.task.company)}</h2><div class="doc-title">企业研究简报</div><p>研究范围：${report.task.start} — ${report.task.end}<br>关注主题：${escape(report.task.topic)}<br>生成方式：${report.mode === 'deepseek' ? 'DeepSeek 辅助整理 · 待人工核查' : '规则摘录 · 未调用模型'}<br>生成时间：${escape(new Date(report.generatedAt).toLocaleString('zh-CN', { hour12: false }))}</p></div><h3>主题概述</h3>${report.claims.map(claim => `<p class="claim">${escape(claim.text)} ${claim.sourceIds.map(citation).join('')}</p>${claimSourceWarnings(report, claim).length ? `<p class="claim-source-warning">${claimSourceWarnings(report, claim).map(escape).join('；')}。核查备注见对应引用来源。</p>` : ''}`).join('')}<h3>资料时间线 <span class="muted small">（按发布日期）</span></h3>${[...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).map(source => `<div class="timeline-row"><span class="timeline-date">${source.date || '日期未知'}</span><div>${escape(source.title)} ${citation(source.id)}</div></div>`).join('')}<h3>信息缺口与待核实事项</h3><div class="report-gap"><ul>${report.gaps.map(gap => `<li>${escape(gap)}</li>`).join('')}</ul></div><h3>引用来源 <span class="muted small">（${report.sources.length} 条）</span></h3>${report.sources.map((source, index) => `<div id="report-source-${source.sourceNumber}" class="report-source" tabindex="-1"><strong>[资料 ${source.sourceNumber}] ${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')} · 发布：${source.date || '未知'} · 录入：${escape(source.collectedAt)}</p><p>${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开原文</a>` : source.file ? '本地文件 · 未提供外部链接' : '无外部链接 · 虚构演示资料'}</p>${source.library ? `<p>资料库检索片段（非全文） · ${escape(librarySourceLabel(source))}</p><p>检索词：${escape(source.library.query)}<br>检索时间：${escape(libraryDate(source.library.retrievedAt))}</p>` : ''}${source.file ? `<p>${escape(localFileLabel(source))}</p>` : ''}${source.web ? `<p>DeepSeek Fetch · 读取：${escape(source.web.fetchedAt)} · 保存 ${source.text.length} / 提取 ${source.web.originalChars} 字${source.web.truncated ? ' · 正文已截取' : ''}</p>` : ''}${source.note ? `<p>核查备注：${escape(source.note)}</p>` : ''}<details><summary>查看纳入时保存的文本</summary><div class="saved-text">${escape(source.text)}</div></details></div>`).join('')}</div>`;
+  const coverage = report.coverage || [];
+  const coverageHtml = `<h3>研究覆盖检查</h3><p>手动关联资料和结论；关联后仍需核对原文。检查项仅保留在当前简报中，刷新或重新生成前请导出。</p><form id="coverage-form" class="coverage-form"><label>检查项<input name="label" maxlength="100" required placeholder="例如：一季度销售网络"></label><label>相关资料<select name="source"><option value="">尚未关联</option>${report.sources.map(source => `<option value="${escape(source.id)}">资料 ${source.sourceNumber}：${escape(source.title)}</option>`).join('')}</select></label><label>相关结论<select name="claim"><option value="">尚未关联</option>${report.claims.map((claim, index) => `<option value="${index}">结论 ${index + 1}：${escape(claim.text.slice(0, 60))}</option>`).join('')}</select></label><button class="button secondary" type="submit">添加检查项</button><p class="field-error" role="alert"></p></form><ul class="coverage-list">${coverage.map((item, index) => `<li><strong>${escape(item.label)}</strong> · ${coverageStatus(item)} ${item.sourceId ? citation(item.sourceId) : ''}${Number.isInteger(item.claimIndex) ? ` · 结论 ${item.claimIndex + 1}` : ''} <button class="link-button" type="button" data-remove-coverage="${index}" aria-label="删除 ${escape(item.label)}">删除</button></li>`).join('')}</ul>`;
+  $('#report-body').innerHTML = `<div class="report-document"><div class="report-doc-header"><h2>${escape(report.task.company)}</h2><div class="doc-title">企业研究简报</div><p>研究范围：${report.task.start} — ${report.task.end}<br>关注主题：${escape(report.task.topic)}<br>生成方式：${report.mode === 'deepseek' ? 'DeepSeek 辅助整理 · 待人工核查' : '规则摘录 · 未调用模型'}<br>生成时间：${escape(new Date(report.generatedAt).toLocaleString('zh-CN', { hour12: false }))}</p></div><h3>主题概述</h3>${report.claims.map(claim => `<p class="claim">${escape(claim.text)} ${claim.sourceIds.map(citation).join('')}</p>${claimSourceWarnings(report, claim).length ? `<p class="claim-source-warning">${claimSourceWarnings(report, claim).map(escape).join('；')}。核查备注见对应引用来源。</p>` : ''}`).join('')}${coverageHtml}<h3>资料时间线 <span class="muted small">（按发布日期）</span></h3>${[...report.sources].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')).map(source => `<div class="timeline-row"><span class="timeline-date">${source.date || '日期未知'}</span><div>${escape(source.title)} ${citation(source.id)}</div></div>`).join('')}<h3>信息缺口与待核实事项</h3><div class="report-gap"><ul>${report.gaps.map(gap => `<li>${escape(gap)}</li>`).join('')}</ul></div><h3>引用来源 <span class="muted small">（${report.sources.length} 条）</span></h3>${report.sources.map((source, index) => `<div id="report-source-${source.sourceNumber}" class="report-source" tabindex="-1"><strong>[资料 ${source.sourceNumber}] ${escape(source.title)}</strong><p>${escape(source.publisher || '来源未知')} · 发布：${source.date || '未知'} · 录入：${escape(source.collectedAt)}</p><p>${safeUrl(source.url) ? `<a href="${escape(source.url)}" target="_blank" rel="noopener noreferrer">打开原文</a>` : source.file ? '本地文件 · 未提供外部链接' : '无外部链接 · 虚构演示资料'}</p>${source.library ? `<p>资料库检索片段（非全文） · ${escape(librarySourceLabel(source))}</p><p>检索词：${escape(source.library.query)}<br>检索时间：${escape(libraryDate(source.library.retrievedAt))}</p>` : ''}${source.file ? `<p>${escape(localFileLabel(source))}</p>` : ''}${source.web ? `<p>DeepSeek Fetch · 读取：${escape(source.web.fetchedAt)} · 保存 ${source.text.length} / 提取 ${source.web.originalChars} 字${source.web.truncated ? ' · 正文已截取' : ''}</p>` : ''}${source.note ? `<p>核查备注：${escape(source.note)}</p>` : ''}<details><summary>查看纳入时保存的文本</summary><div class="saved-text">${escape(source.text)}</div></details></div>`).join('')}</div>`;
 }
 
 function releaseLocalFile() {
@@ -844,6 +846,27 @@ $('#source-form').addEventListener('submit', event => {
   if (currentStep === 'review') { filter = 'all'; renderReview(); }
   else renderCollection();
   toast('资料已保存，等待人工审核');
+});
+
+$('#report-body').addEventListener('submit', event => {
+  if (event.target.id !== 'coverage-form' || !state.report) return;
+  event.preventDefault();
+  const form = event.target;
+  const label = form.elements.label.value.trim();
+  const sourceId = form.elements.source.value;
+  const claim = form.elements.claim.value;
+  if (!label || (!sourceId && claim !== '')) { form.querySelector('.field-error').textContent = '请输入检查项；关联结论前请先选择资料。'; return; }
+  if (claim !== '' && !state.report.claims[Number(claim)]?.sourceIds.includes(sourceId)) { form.querySelector('.field-error').textContent = '所选结论没有引用该资料，请重新选择并核对。'; return; }
+  (state.report.coverage ||= []).push({ label, sourceId, claimIndex: claim === '' ? null : Number(claim) });
+  renderReport();
+  $('#coverage-form input').focus();
+});
+$('#report-body').addEventListener('click', event => {
+  const button = event.target.closest('[data-remove-coverage]');
+  if (!button || !state.report) return;
+  state.report.coverage.splice(Number(button.dataset.removeCoverage), 1);
+  renderReport();
+  $('#coverage-form input').focus();
 });
 
 $('#report-mode').addEventListener('change', updateReportHint);
