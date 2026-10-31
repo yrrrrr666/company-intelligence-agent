@@ -1,6 +1,6 @@
 {
   "name": "company-intelligence-assistant",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "description": "企业情报研究助手：本地资料审核与可追溯简报原型",
@@ -13,6 +13,7 @@
     "test:browser": "node tests/browser.cjs",
     "test:library-browser": "node tests/library.browser.cjs",
     "test:retrieval-browser": "node tests/retrieval.browser.cjs",
+    "test:calls-browser": "node tests/calls.browser.cjs",
     "eval:retrieval": "node scripts/evaluate-retrieval.mjs"
   },
   "dependencies": {

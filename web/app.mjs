@@ -3,6 +3,7 @@ import { checkLocalFile, openLocalFile, extractLocalText, validatePageRange, MAX
 import { mergeSearchCandidates, saveWebText } from './research.mjs';
 import { libraryResultSource } from './library.mjs';
 import { librarySourceLabel } from './core.mjs';
+import { initCallHistory, showCallLogWarning } from './calls.mjs';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -97,7 +98,7 @@ function invalidateReport() {
 }
 
 function go(step) {
-  if (!state.task && !['create', 'library'].includes(step)) return;
+  if (!state.task && !['create', 'library', 'calls'].includes(step)) return;
   if (currentStep === 'library' && step !== 'library') libraryView.generation++;
   currentStep = step;
   for (const view of $$('.view')) view.hidden = view.id !== `view-${step}`;
@@ -115,6 +116,7 @@ function go(step) {
   if (step === 'review') renderReview();
   if (step === 'report') renderReport();
   $('#open-library').setAttribute('aria-current', step === 'library' ? 'page' : 'false');
+  $('#open-calls').setAttribute('aria-current', step === 'calls' ? 'page' : 'false');
   if (step === 'library') renderLibrary();
   $('#main').focus({ preventScroll: true });
   window.scrollTo(0, 0);
@@ -173,6 +175,7 @@ function collectionChanged() {
 async function researchPost(route, body, signal) {
   const response = await fetch(route, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
   const payload = await response.json();
+  showCallLogWarning(payload);
   if (!response.ok) throw new Error(payload.error || '资料服务不可用，请重试。');
   return payload;
 }
@@ -186,7 +189,7 @@ async function readSources(ids, controller, active, prefix = '') {
     if (!source?.web || source.web.status === 'available') continue;
     $('#collection-progress').textContent = `${prefix}正在读取 ${index + 1}/${ids.length}：${source.title}`;
     try {
-      const page = await researchPost('/api/read', { url: source.url }, controller.signal);
+      const page = await researchPost('/api/read', { url: source.url, taskId: state.task.id, sourceId: source.id }, controller.signal);
       if (!active()) return;
       const position = state.sources.findIndex(item => item.id === id);
       state.sources[position] = saveWebText(state.sources[position], page);
@@ -862,6 +865,7 @@ $('#generate-report').addEventListener('click', async () => {
       try {
         const response = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task: state.task, sources: selected }), signal: controller.signal });
         const payload = await response.json();
+        showCallLogWarning(payload);
         if (requestController !== controller) return;
         if (!response.ok) throw new Error(payload.error || '生成失败，请重试');
         claims = validateModelClaims(payload, state.sources);
@@ -910,6 +914,7 @@ async function loadConfig() {
   updateResearchControls();
 }
 
+initCallHistory({ getTask: () => state.task, getStep: () => currentStep, go });
 restore();
 fillTaskForm();
 go(state.task ? 'review' : 'create');

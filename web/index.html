@@ -21,7 +21,7 @@
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="/" aria-label="知序，企业情报研究助手首页"><img src="/favicon.svg" width="30" height="30" alt=""><strong>知序</strong><span class="brand-description">企业情报研究助手</span></a>
-      <div class="topbar-actions"><span class="local-label">本地工作台</span><button id="open-library" class="header-button" aria-controls="view-library">资料库</button><button id="toggle-demo-sidebar" class="header-button" aria-controls="demo-sidebar" aria-expanded="false">示例体验</button><button id="clear-workspace" class="header-button">清空当前任务</button></div>
+      <div class="topbar-actions"><span class="local-label">本地工作台</span><button id="open-library" class="header-button" aria-controls="view-library">资料库</button><button id="open-calls" class="header-button" aria-controls="view-calls">调用记录</button><button id="toggle-demo-sidebar" class="header-button" aria-controls="demo-sidebar" aria-expanded="false">示例体验</button><button id="clear-workspace" class="header-button">清空当前任务</button></div>
     </div>
   </header>
   <div class="stepbar">
@@ -35,6 +35,7 @@
   <div class="workspace-shell">
   <main id="main" tabindex="-1">
     <div id="storage-warning" class="notice warning" role="status" hidden>浏览器无法保存当前任务。请在离开前导出简报。</div>
+    <div id="call-log-warning" class="notice warning" role="status" hidden></div>
     <section id="task-context" class="task-context" aria-label="当前研究范围" hidden></section>
     <div id="demo-notice" class="notice demo" hidden><strong>虚构演示</strong><span>当前公司与资料均为虚构，仅用于体验研究流程。</span></div>
     <section id="view-create" class="view" aria-labelledby="create-heading">
@@ -78,7 +79,15 @@
       <div class="library-workspace"><section class="library-index" aria-label="库内资料与检索结果"><div class="review-toolbar"><div class="filter-group" role="group" aria-label="资料库视图"><button id="library-documents-tab" class="selected" type="button" aria-pressed="true">库内资料 <span id="library-document-count">0</span></button><button id="library-results-tab" type="button" aria-pressed="false">检索片段 <span id="library-result-count">0</span></button></div></div><div id="library-document-list" class="library-list"></div><div id="library-results" class="library-list" hidden></div></section><article id="library-document-detail" class="library-detail" tabindex="-1" aria-label="资料原文与检索片段"></article></div>
       <p id="library-task-hint" class="field-help library-task-hint">检索片段加入当前任务后，仍须逐条审核才能用于简报。</p>
     </section>
-    <footer class="page-footer"><span>当前任务保存在此浏览器 · 资料库保存在本机服务</span><span id="model-status" role="status">正在检查模型配置…</span></footer>
+    <section id="view-calls" class="view" hidden aria-labelledby="calls-heading">
+      <div class="section-heading"><div><h1 id="calls-heading">调用记录</h1><p>查看搜索、网页读取与模型生成的状态、耗时和服务方返回的用量。</p></div><button id="close-calls" class="button secondary">返回工作台</button></div>
+      <div class="calls-toolbar"><label class="flag-label"><input id="calls-current" type="checkbox">仅当前任务</label><label for="calls-operation">操作<select id="calls-operation"><option value="">全部操作</option><option value="search">搜索资料</option><option value="read">读取网页</option><option value="report">生成简报</option></select></label><label for="calls-status-filter">状态<select id="calls-status-filter"><option value="">全部状态</option><option value="running">进行中</option><option value="succeeded">成功</option><option value="failed">失败</option><option value="cancelled">已取消</option><option value="interrupted">未完成</option></select></label><div class="calls-actions"><button id="refresh-calls" class="button secondary">刷新记录</button><button id="export-calls" class="button secondary" disabled>导出当前列表</button></div></div>
+      <p id="calls-summary" class="library-status" role="status" aria-live="polite"></p><p id="calls-error" class="field-error library-error" role="alert"></p>
+      <div id="calls-empty" class="calls-empty" hidden><h2>还没有匹配的调用记录</h2><p>发起搜索、读取网页或使用 DeepSeek 生成简报后，可在这里核对调用结果。规则摘录、本地导入和资料库检索不产生外部调用记录。</p></div>
+      <div id="calls-table-wrap" class="calls-table-wrap" hidden><table class="calls-table"><caption class="visually-hidden">本机外部服务调用记录，按发起时间倒序显示</caption><thead><tr><th scope="col">发起时间</th><th scope="col">操作</th><th scope="col">状态</th><th scope="col">耗时</th><th scope="col">输入 token</th><th scope="col">输出 token</th><th scope="col">费用</th><th scope="col">详情</th></tr></thead><tbody id="calls-rows"></tbody></table></div>
+      <p class="calls-note">仅保留本机最近 500 次外部调用，清空当前任务不会删除记录。每次手动重试单独记录；供应商未返回的用量与费用显示未知，请按账单核对。耗时包含服务响应与结果校验；取消或未完成也可能产生费用。记录不保存正文、检索词、网页链接或密钥。</p>
+    </section>
+    <footer class="page-footer"><span>当前任务保存在此浏览器 · 资料库与调用记录保存在本机服务</span><span id="model-status" role="status">正在检查模型配置…</span></footer>
   </main>
   <aside id="demo-sidebar" class="demo-sidebar" aria-labelledby="demo-sidebar-title" hidden>
     <div class="sidebar-heading"><h2 id="demo-sidebar-title">示例体验</h2><button id="close-demo-sidebar" class="icon-button" aria-label="关闭示例侧栏"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>

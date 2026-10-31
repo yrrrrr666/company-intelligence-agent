@@ -1,11 +1,16 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
 import { demoWorkspace } from '../web/core.mjs';
 import { libraryResultSource } from '../web/library.mjs';
 
 process.env.DEEPSEEK_API_KEY = 'test-only-placeholder';
 process.env.PORT = '0';
+const callDirectory = await mkdtemp(path.join(os.tmpdir(), 'company-server-calls-'));
+process.env.CALL_LOG_PATH = path.join(callDirectory, 'calls.json');
 const { server } = await import('../src/server.mjs');
 const nativeFetch = globalThis.fetch;
 let base;
@@ -16,6 +21,7 @@ let mockFailure;
 let webResponse;
 let webGate;
 let modelGate;
+let modelAction;
 
 before(async () => {
   globalThis.fetch = async (url, options) => {
@@ -30,6 +36,7 @@ before(async () => {
       lastProviderRequest = JSON.parse(options.body);
       if (mockFailure) throw mockFailure;
       if (modelGate) await modelGate;
+      if (modelAction) await modelAction(options);
       return new Response(JSON.stringify(mockResponse), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     return nativeFetch(url, options);
@@ -37,7 +44,12 @@ before(async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
 });
-after(async () => { globalThis.fetch = nativeFetch; await new Promise(resolve => server.close(resolve)); });
+after(async () => {
+  globalThis.fetch = nativeFetch;
+  await new Promise(resolve => server.close(resolve));
+  assert.equal(path.dirname(callDirectory), os.tmpdir());
+  await rm(callDirectory, { recursive: true, force: true });
+});
 
 test('local server exposes only public app files and safe config', async () => {
   assert.equal((await fetch(`${base}/`)).status, 200);
@@ -206,9 +218,9 @@ test('simultaneous incomplete request bodies cannot bypass the research concurre
     await allHeaders;
     for (const req of requests) req.end('"https://example.com/news"}');
     assert.equal(await Promise.race(responses), 429);
-    assert.equal(providerCalls - beforeCalls, 2);
     release();
     assert.deepEqual((await Promise.all(responses)).sort(), [200, 200, 429]);
+    assert.equal(providerCalls - beforeCalls, 2);
   } finally {
     release();
     webGate = null;
@@ -290,4 +302,141 @@ test('model text budget accepts 80000 characters and rejects 80001 before provid
   assert.equal(rejected.status, 400);
   assert.match((await rejected.json()).error, /80000/);
   assert.equal(providerCalls - beforeCalls, 1);
+});
+
+test('call history protects origins and local paths and rejects unsupported operations', async () => {
+  assert.equal((await fetch(`${base}/api/calls`, { headers: { Origin: 'https://example.com' } })).status, 403);
+  assert.equal((await fetch(`${base}/api/calls`, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
+  assert.equal((await fetch(`${base}/api/calls`, { method: 'POST', headers: { Origin: base } })).status, 405);
+  assert.equal((await fetch(`${base}/api/calls?taskId=invalid%20id`)).status, 400);
+  for (const target of ['/data/calls.json', '/src/calls.mjs']) assert.equal((await fetch(base + target)).status, 404);
+  assert.equal((await fetch(base + '/calls.mjs')).status, 200);
+});
+
+test('search, read and report each retain one correlated record with only available provider usage', async () => {
+  const workspace = demoWorkspace();
+  workspace.task.id = 'trace-task';
+  workspace.sources = [{ ...workspace.sources[0], review: 'included', text: 'PRIVATE_RESEARCH_BODY' }];
+  const post = (route, input) => fetch(base + route, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+  webResponse = { results: [] };
+  const search = await post('/api/search', { task: workspace.task, query: 'PRIVATE_SEARCH_QUERY' });
+  webResponse = { content: 'PRIVATE_WEB_BODY'.repeat(20), usage: { prompt_tokens: 0 } };
+  const read = await post('/api/read', { taskId: workspace.task.id, sourceId: 'trace-source', url: 'https://example.com/PRIVATE_TARGET' });
+  mockResponse = { id: 'provider-trace-id', model: 'fixture-model', usage: { prompt_tokens: 123, completion_tokens: 45, total_tokens: 168, prompt_cache_hit_tokens: 0 }, choices: [{ message: { content: JSON.stringify({ claims: [{ text: 'PRIVATE_MODEL_OUTPUT', sourceIds: ['demo-1'] }] }) } }] };
+  const report = await post('/api/report', workspace);
+  for (const response of [search, read, report]) assert.equal(response.status, 200);
+  const listed = await fetch(`${base}/api/calls?taskId=trace-task`);
+  assert.equal(listed.headers.get('cache-control'), 'no-store');
+  const history = await listed.json();
+  assert.equal(history.records.length, 3);
+  for (const response of [search, read, report]) {
+    const record = history.records.find(item => item.id === response.headers.get('x-call-id'));
+    assert.equal(record.status, 'succeeded');
+    assert.equal(record.httpStatus, 200);
+    assert(Number.isSafeInteger(record.durationMs));
+    assert.equal(record.cost, null);
+  }
+  const modelRecord = history.records.find(item => item.operation === 'report');
+  assert.equal(modelRecord.usage.inputTokens, 123);
+  assert.equal(modelRecord.usage.outputTokens, 45);
+  assert.equal(modelRecord.providerRequestId, 'provider-trace-id');
+  assert.equal(modelRecord.model, 'fixture-model');
+  assert.equal(history.records.find(item => item.operation === 'read').usage.inputTokens, 0);
+  assert.equal(history.records.find(item => item.operation === 'read').sourceId, 'trace-source');
+  assert.equal(history.records.find(item => item.operation === 'search').usage.inputTokens, null);
+  const disk = await readFile(process.env.CALL_LOG_PATH, 'utf8');
+  for (const text of ['PRIVATE_RESEARCH_BODY', 'PRIVATE_MODEL_OUTPUT', 'PRIVATE_SEARCH_QUERY', 'PRIVATE_WEB_BODY', 'PRIVATE_TARGET', 'test-only-placeholder']) {
+    assert(!JSON.stringify(history).includes(text));
+    assert(!disk.includes(text));
+  }
+  assert(!JSON.stringify(history).includes('sessionId'));
+});
+
+test('model validation failures and timeouts record safe failure codes without losing returned usage', async () => {
+  const input = demoWorkspace();
+  input.task.id = 'failure-log-task';
+  input.sources[0].review = 'included';
+  const post = () => fetch(base + '/api/report', { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+  mockResponse = { usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 }, choices: [{ finish_reason: 'length' }] };
+  const truncated = await post();
+  assert.equal(truncated.status, 502);
+  mockFailure = Object.assign(new Error('PRIVATE_PROVIDER_FAILURE'), { name: 'TimeoutError' });
+  let timeout;
+  try { timeout = await post(); } finally { mockFailure = null; }
+  assert.equal(timeout.status, 502);
+  const { records } = await (await fetch(`${base}/api/calls?taskId=failure-log-task`)).json();
+  const truncatedRecord = records.find(item => item.id === truncated.headers.get('x-call-id'));
+  assert.equal(truncatedRecord.errorCode, 'MODEL_OUTPUT_LIMIT');
+  assert.equal(truncatedRecord.status, 'failed');
+  assert.equal(truncatedRecord.usage.totalTokens, 30);
+  const timeoutRecord = records.find(item => item.id === timeout.headers.get('x-call-id'));
+  assert.equal(timeoutRecord.errorCode, 'MODEL_TIMEOUT');
+  assert.equal(timeoutRecord.httpStatus, null);
+  assert.equal(timeoutRecord.usage.totalTokens, null);
+  assert(!JSON.stringify(records).includes('PRIVATE_PROVIDER_FAILURE'));
+});
+
+test('unwritable or corrupt initial logs prevent provider calls without overwriting the old file', async () => {
+  const original = await readFile(process.env.CALL_LOG_PATH, 'utf8');
+  const beforeCalls = providerCalls;
+  const corrupted = '{original damaged log';
+  await writeFile(process.env.CALL_LOG_PATH, corrupted);
+  try {
+    const response = await fetch(base + '/api/read', { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'https://example.com/news' }) });
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).code, 'CALL_LOG_UNAVAILABLE');
+    assert.equal(providerCalls, beforeCalls);
+    assert.equal(await readFile(process.env.CALL_LOG_PATH, 'utf8'), corrupted);
+    assert.equal((await fetch(base + '/api/calls')).status, 503);
+  } finally { await writeFile(process.env.CALL_LOG_PATH, original); }
+});
+
+test('client cancellation aborts the model request, records cancellation and frees the next generation', async () => {
+  const input = demoWorkspace();
+  input.task.id = 'cancel-log-task';
+  input.sources[0].review = 'included';
+  mockResponse = { choices: [{ message: { content: JSON.stringify({ claims: [{ text: '虚构重试结果', sourceIds: ['demo-1'] }] }) } }] };
+  let started;
+  let aborted;
+  const providerStarted = new Promise(resolve => { started = resolve; });
+  const providerAborted = new Promise(resolve => { aborted = resolve; });
+  modelAction = options => new Promise((resolve, reject) => {
+    started();
+    options.signal.addEventListener('abort', () => { aborted(); reject(options.signal.reason); }, { once: true });
+  });
+  const controller = new AbortController();
+  try {
+    const pending = fetch(base + '/api/report', { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal: controller.signal });
+    await providerStarted;
+    controller.abort();
+    await assert.rejects(pending, error => error.name === 'AbortError');
+    await providerAborted;
+    modelAction = null;
+    let record;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      record = (await (await fetch(base + '/api/calls?taskId=cancel-log-task')).json()).records[0];
+      if (record?.status === 'cancelled') break;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(record.status, 'cancelled');
+    assert.equal(record.errorCode, 'CLIENT_CANCELLED');
+    assert.equal(record.usage.totalTokens, null);
+    const retry = await fetch(base + '/api/report', { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    assert.equal(retry.status, 200);
+  } finally { controller.abort(); modelAction = null; }
+});
+
+test('a final log write failure preserves a successful result and returns an explicit warning', async () => {
+  const original = await readFile(process.env.CALL_LOG_PATH, 'utf8');
+  const input = demoWorkspace();
+  input.sources[0].review = 'included';
+  mockResponse = { choices: [{ message: { content: JSON.stringify({ claims: [{ text: '虚构成功结果', sourceIds: ['demo-1'] }] }) } }] };
+  modelAction = async () => { await writeFile(process.env.CALL_LOG_PATH, '{simulated final write failure'); };
+  try {
+    const response = await fetch(base + '/api/report', { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.claims[0].text, '虚构成功结果');
+    assert.match(payload.callLogWarning, /调用记录未能更新/);
+  } finally { modelAction = null; await writeFile(process.env.CALL_LOG_PATH, original); }
 });
